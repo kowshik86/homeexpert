@@ -8,7 +8,7 @@ const validatePhoneNumber = (phone) => {
 const shopItemSchema = new mongoose.Schema({
   category: { type: String, required: true },
   name: { type: [String], required: true },
-  imageUrl: { type: String, required: true,unique: true},
+  imageUrl: { type: String, required: true },
   description: { type: String, required: true },
   quantity: { type: Number, required: true },
   price: { type: Number, required: true },
@@ -80,18 +80,61 @@ const shopKeeperSchema = new mongoose.Schema({
     required:true,
     lowercase: true,
   },
+  passwordHash: {
+    type: String,
+    select: false,
+  },
   shopName:{
     type:String,
     required:true 
+  },
+  shopImage: {
+    type: String,
+    trim: true,
+  },
+  businessCategory: {
+    type: String,
+    trim: true,
+  },
+  yearsInBusiness: {
+    type: Number,
+    min: 0,
+  },
+  acceptsOnlinePayments: {
+    type: Boolean,
+    default: false,
+  },
+  minOrderValue: {
+    type: Number,
+    min: 0,
+  },
+  shopDescription: {
+    type: String,
+    trim: true,
+  },
+  openingTime: {
+    type: String,
+    trim: true,
+  },
+  closingTime: {
+    type: String,
+    trim: true,
+  },
+  isShopOpen: {
+    type: Boolean,
+    default: true,
+  },
+  gstNumber: {
+    type: String,
+    trim: true,
   },
   shopAddress:{
     type:shop,
     required:true
   },
-    products:{
-      type:[shopItemSchema],
-      unique:true
-    }
+  products:{
+    type:[shopItemSchema],
+  }
 });
 
 const ShopKeeper=mongoose.model('shopkeeper',shopKeeperSchema);

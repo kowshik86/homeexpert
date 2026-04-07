@@ -65,6 +65,10 @@ const workerSchema = new mongoose.Schema({
     unique: true,
     lowercase: true
   },
+  passwordHash: {
+    type: String,
+    select: false,
+  },
   Address:{
     type:workeraddress,
     required:true
@@ -86,6 +90,27 @@ const workerSchema = new mongoose.Schema({
         },
         message: 'A worker must have at least one type of work.'
     }
+  },
+  isAvailable: {
+    type: Boolean,
+    default: true,
+  },
+  experienceYears: {
+    type: Number,
+    min: 0,
+    default: 0,
+  },
+  hourlyRate: {
+    type: Number,
+    min: 0,
+  },
+  serviceRadiusKm: {
+    type: Number,
+    min: 0,
+  },
+  bio: {
+    type: String,
+    trim: true,
   }
 });
 

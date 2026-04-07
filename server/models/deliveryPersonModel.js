@@ -34,6 +34,10 @@ const deliverySchema = new mongoose.Schema({
     unique: true,
     lowercase: true,
   },
+  passwordHash: {
+    type: String,
+    select: false,
+  },
   dob:{
     type:Date,
     required:true
@@ -41,6 +45,40 @@ const deliverySchema = new mongoose.Schema({
   vechicle:{
     type:Boolean,
     required:true
+  },
+  vehicleNumber: {
+    type: String,
+    unique: true,
+    sparse: true,
+    trim: true,
+  },
+  vehicleImage: {
+    type: String,
+    trim: true,
+  },
+  vehicleType: {
+    type: String,
+    enum: ['bike', 'scooter', 'car', 'van'],
+  },
+  emergencyContact: {
+    type: String,
+    trim: true,
+  },
+  preferredShift: {
+    type: String,
+    enum: ['morning', 'afternoon', 'evening', 'night'],
+  },
+  licenseNumber: {
+    type: String,
+    trim: true,
+  },
+  isAvailable: {
+    type: Boolean,
+    default: true,
+  },
+  serviceAreas: {
+    type: [String],
+    default: [],
   },
   rating:{
     type:Number,

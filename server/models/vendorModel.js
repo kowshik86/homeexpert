@@ -68,9 +68,37 @@ const vendorSchema = new mongoose.Schema({
     required:true,
     lowercase: true,
   },
+  passwordHash: {
+    type: String,
+    select: false,
+  },
   shopName:{
     type:String,
     required:true 
+  },
+  shopImage: {
+    type: String,
+    trim: true,
+  },
+  businessCategory: {
+    type: String,
+    trim: true,
+  },
+  yearsInBusiness: {
+    type: Number,
+    min: 0,
+  },
+  acceptsOnlinePayments: {
+    type: Boolean,
+    default: false,
+  },
+  minOrderValue: {
+    type: Number,
+    min: 0,
+  },
+  gstNumber: {
+    type: String,
+    trim: true,
   },
   shopAddress:{
     type:shop,

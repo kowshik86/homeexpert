@@ -6,6 +6,12 @@ import Cart from './components/Cart'
 import Products from './components/Products'
 import UserDashboard from './components/user/UserDashboard'
 import AuthModal from './components/auth/AuthModal'
+import WorkLogin from './components/work/WorkLogin'
+import VendorDashboard from './components/work/VendorDashboard'
+import ShopkeeperDashboard from './components/work/ShopkeeperDashboard'
+import DeliveryDashboard from './components/work/DeliveryDashboard'
+import WorkerDashboard from './components/work/WorkerDashboard'
+import WorkforceAdminDashboard from './components/admin/WorkforceAdminDashboard'
 import './App.css';
 import { useAuth } from './context/AuthContext'
 
@@ -45,8 +51,32 @@ function App() {
         {
           path: "account",
           element: <ProtectedRoute><UserDashboard /></ProtectedRoute>
+        },
+        {
+          path: "work/login",
+          element: <WorkLogin />
+        },
+        {
+          path: "work/vendor-dashboard",
+          element: <VendorDashboard />
+        },
+        {
+          path: "work/shopkeeper-dashboard",
+          element: <ShopkeeperDashboard />
+        },
+        {
+          path: "work/delivery-dashboard",
+          element: <DeliveryDashboard />
+        },
+        {
+          path: "work/worker-dashboard",
+          element: <WorkerDashboard />
         }
       ]
+    },
+    {
+      path: "/private/workforce-admin-dashboard",
+      element: <WorkforceAdminDashboard />
     }
   ])
   return (

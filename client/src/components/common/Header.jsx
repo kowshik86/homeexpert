@@ -1,13 +1,78 @@
-import React, { useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useCart } from '../../context/CartContext';
 import { useAuth } from '../../context/AuthContext';
-import { Link } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import SearchBar from './SearchBar';
 
 function Header() {
   const { cartCount } = useCart();
   const { currentUser, openAuthModal, logout } = useAuth();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [workforceAuth, setWorkforceAuth] = useState(null);
+  const location = useLocation();
+  const navigate = useNavigate();
+
+  const isAdminPath = location.pathname.startsWith('/private/workforce-admin-dashboard');
+  const isWorkPath = location.pathname.startsWith('/work/');
+  const showConsumerActions = !isAdminPath && !isWorkPath;
+
+  useEffect(() => {
+    const workforceState = localStorage.getItem('workforceAuth');
+    setWorkforceAuth(workforceState ? JSON.parse(workforceState) : null);
+  }, [location.pathname, currentUser]);
+
+  useEffect(() => {
+    const onStorageChange = () => {
+      const workforceState = localStorage.getItem('workforceAuth');
+      setWorkforceAuth(workforceState ? JSON.parse(workforceState) : null);
+    };
+
+    window.addEventListener('storage', onStorageChange);
+    return () => window.removeEventListener('storage', onStorageChange);
+  }, []);
+
+  const workforceRouteByRole = {
+    vendor: '/work/vendor-dashboard',
+    shopkeeper: '/work/shopkeeper-dashboard',
+    delivery: '/work/delivery-dashboard',
+    worker: '/work/worker-dashboard',
+  };
+
+  const activeAccount = useMemo(() => {
+    if (currentUser) {
+      return {
+        label: currentUser.firstName || 'Account',
+        accountPath: '/account',
+        isWorkforce: false,
+      };
+    }
+
+    if (workforceAuth?.profile) {
+      const roleLabel = workforceAuth.role ? workforceAuth.role.charAt(0).toUpperCase() + workforceAuth.role.slice(1) : 'Work';
+      return {
+        label: `${workforceAuth.profile.firstName || 'Partner'} (${roleLabel})`,
+        accountPath: workforceRouteByRole[workforceAuth.role] || '/work/login',
+        isWorkforce: true,
+      };
+    }
+
+    return null;
+  }, [currentUser, workforceAuth]);
+
+  const handleUnifiedLogout = () => {
+    const hadWorkforceSession = !!workforceAuth;
+
+    if (currentUser) {
+      logout();
+    }
+
+    localStorage.removeItem('workforceAuth');
+    setWorkforceAuth(null);
+
+    if (isWorkPath || isAdminPath || hadWorkforceSession) {
+      navigate('/work/login');
+    }
+  };
 
   const toggleMobileMenu = () => {
     setMobileMenuOpen(!mobileMenuOpen);
@@ -30,7 +95,13 @@ function Header() {
         </Link>
 
         <div className="flex flex-grow justify-center space-x-8 ml-8">
-          <SearchBar />
+          {showConsumerActions ? (
+            <SearchBar />
+          ) : (
+            <div className="hidden md:flex items-center px-4 py-2 rounded-full bg-purple-50 border border-purple-100 text-primary-custom font-semibold text-sm">
+              {isAdminPath ? 'Private Admin Console' : 'Workforce Portal'}
+            </div>
+          )}
         </div>
 
         {/* Mobile menu button */}
@@ -68,59 +139,82 @@ function Header() {
         <div className="hidden lg:flex items-center space-x-4">
           <ul className="hidden lg:flex flex-grow justify-center space-x-8 ml-8" style={{ fontFamily: 'Gilroy, Arial, Helvetica Neue, sans-serif' }}>
             <li className="text-cement font-[600] flex items-center space-x-1 cursor-pointer">
-              {currentUser ? (
+              {activeAccount ? (
                 <div className="flex items-center space-x-4">
                   <Link
-                    to="/account"
+                    to={activeAccount.accountPath}
                     className="text-primary-custom cursor-pointer flex items-center transition-all duration-300 hover:text-primary-custom hover:scale-105 nav-link"
                   >
                     <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
                     </svg>
-                    <span>{currentUser.firstName}</span>
+                    <span>{activeAccount.label}</span>
                   </Link>
                   <button
-                    onClick={logout}
-                    className="text-primary-custom cursor-pointer flex items-center transition-all duration-300 hover:text-primary-custom hover:scale-105 nav-link"
+                    onClick={handleUnifiedLogout}
+                    aria-label="Logout"
+                    title="Logout"
+                    className="text-primary-custom cursor-pointer flex items-center justify-center transition-all duration-300 hover:text-primary-custom hover:scale-110 nav-link p-1 rounded-md"
                   >
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
                     </svg>
-                    Logout
                   </button>
                 </div>
               ) : (
-                <button
-                  onClick={() => openAuthModal('login')}
-                  className="text-primary-custom cursor-pointer flex items-center transition-all duration-300 hover:text-primary-custom hover:scale-105 nav-link"
-                >
-                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                  </svg>
-                  Login
-                </button>
+                showConsumerActions ? (
+                  <button
+                    onClick={() => openAuthModal('login')}
+                    className="text-primary-custom cursor-pointer flex items-center transition-all duration-300 hover:text-primary-custom hover:scale-105 nav-link"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                    </svg>
+                    Login
+                  </button>
+                ) : (
+                  <Link
+                    to="/work/login"
+                    className="text-primary-custom cursor-pointer flex items-center transition-all duration-300 hover:text-primary-custom hover:scale-105 nav-link"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5.121 17.804A9 9 0 1118.88 6.196M15 12h6m0 0l-3-3m3 3l-3 3" />
+                    </svg>
+                    Partner Login
+                  </Link>
+                )
               )}
             </li>
-            <li className="text-cement font-[600] flex items-center space-x-1 cursor-pointer">
-              <Link to="/cart" className="text-primary-custom cursor-pointer flex items-center transition-all duration-300 hover:text-primary-custom hover:scale-105 nav-link">
-                <div className="relative flex items-center">
-                  <div className="relative">
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z" />
-                    </svg>
-                    {cartCount > 0 && (
-                      <span className="absolute -top-2 -right-2 bg-primary-custom text-white text-xs font-bold rounded-full h-5 w-5 flex items-center justify-center">
-                        {cartCount}
-                      </span>
-                    )}
-                  </div>
-                  <span className="ml-2">Cart</span>
-                </div>
-              </Link>
-            </li>
-            <li className="text-cement font-bold flex items-center space-x-2 cursor-pointer">
-              <a href="#" className="text-primary-custom transition-all duration-300 hover:text-primary-custom hover:scale-105 nav-link font-bold">Work at HomeXpert</a>
-            </li>
+            {showConsumerActions && !activeAccount ? (
+              <>
+                <li className="text-cement font-[600] flex items-center space-x-1 cursor-pointer">
+                  <Link to="/cart" className="text-primary-custom cursor-pointer flex items-center transition-all duration-300 hover:text-primary-custom hover:scale-105 nav-link">
+                    <div className="relative flex items-center">
+                      <div className="relative">
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z" />
+                        </svg>
+                        {cartCount > 0 && (
+                          <span className="absolute -top-2 -right-2 bg-primary-custom text-white text-xs font-bold rounded-full h-5 w-5 flex items-center justify-center">
+                            {cartCount}
+                          </span>
+                        )}
+                      </div>
+                      <span className="ml-2">Cart</span>
+                    </div>
+                  </Link>
+                </li>
+                <li className="text-cement font-bold flex items-center space-x-2 cursor-pointer">
+                  <Link to="/work/login" className="text-primary-custom transition-all duration-300 hover:text-primary-custom hover:scale-105 nav-link font-bold">Work at HomeXpert</Link>
+                </li>
+              </>
+            ) : showConsumerActions ? null : (
+              <li className="text-cement font-bold flex items-center space-x-2 cursor-pointer">
+                <Link to="/" className="text-primary-custom transition-all duration-300 hover:text-primary-custom hover:scale-105 nav-link font-bold">
+                  Back to Storefront
+                </Link>
+              </li>
+            )}
           </ul>
         </div>
       </nav>
@@ -130,19 +224,23 @@ function Header() {
         <div className="lg:hidden fixed top-[56px] inset-x-0 z-40 bg-white shadow-md py-3 px-4">
           <ul className="flex flex-col space-y-4" style={{ fontFamily: 'Gilroy, Arial, Helvetica Neue, sans-serif' }}>
             <li className="text-cement font-[600] flex items-center space-x-1 cursor-pointer">
-              {currentUser ? (
+              {activeAccount ? (
                 <div className="flex flex-col space-y-3">
                   <Link
-                    to="/account"
+                    to={activeAccount.accountPath}
+                    onClick={() => setMobileMenuOpen(false)}
                     className="text-primary-custom cursor-pointer flex items-center transition-all duration-300 hover:text-primary-custom hover:scale-105 nav-link"
                   >
                     <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
                     </svg>
-                    <span>My Account ({currentUser.firstName})</span>
+                    <span>{activeAccount.label}</span>
                   </Link>
                   <button
-                    onClick={logout}
+                    onClick={() => {
+                      handleUnifiedLogout();
+                      setMobileMenuOpen(false);
+                    }}
                     className="text-primary-custom cursor-pointer flex items-center transition-all duration-300 hover:text-primary-custom hover:scale-105 nav-link"
                   >
                     <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -152,37 +250,58 @@ function Header() {
                   </button>
                 </div>
               ) : (
-                <button
-                  onClick={() => openAuthModal('login')}
-                  className="text-primary-custom cursor-pointer flex items-center transition-all duration-300 hover:text-primary-custom hover:scale-105 nav-link"
-                >
-                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                  </svg>
-                  Login
-                </button>
+                showConsumerActions ? (
+                  <button
+                    onClick={() => openAuthModal('login')}
+                    className="text-primary-custom cursor-pointer flex items-center transition-all duration-300 hover:text-primary-custom hover:scale-105 nav-link"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                    </svg>
+                    Login
+                  </button>
+                ) : (
+                  <Link
+                    to="/work/login"
+                    onClick={() => setMobileMenuOpen(false)}
+                    className="text-primary-custom cursor-pointer flex items-center transition-all duration-300 hover:text-primary-custom hover:scale-105 nav-link"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5.121 17.804A9 9 0 1118.88 6.196M15 12h6m0 0l-3-3m3 3l-3 3" />
+                    </svg>
+                    Partner Login
+                  </Link>
+                )
               )}
             </li>
-            <li className="text-cement font-[600] flex items-center space-x-1 cursor-pointer">
-              <Link to="/cart" className="text-primary-custom cursor-pointer flex items-center transition-all duration-300 hover:text-primary-custom hover:scale-105 nav-link">
-                <div className="relative flex items-center">
-                  <div className="relative">
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z" />
-                    </svg>
-                    {cartCount > 0 && (
-                      <span className="absolute -top-2 -right-2 bg-primary-custom text-white text-xs font-bold rounded-full h-5 w-5 flex items-center justify-center">
-                        {cartCount}
-                      </span>
-                    )}
-                  </div>
-                  <span className="ml-2">Cart</span>
-                </div>
-              </Link>
-            </li>
-            <li className="text-cement font-bold flex items-center space-x-2 cursor-pointer">
-              <a href="#" className="text-primary-custom transition-all duration-300 hover:text-primary-custom hover:scale-105 nav-link font-bold">Work at HomeXpert</a>
-            </li>
+            {showConsumerActions && !activeAccount ? (
+              <>
+                <li className="text-cement font-[600] flex items-center space-x-1 cursor-pointer">
+                  <Link to="/cart" onClick={() => setMobileMenuOpen(false)} className="text-primary-custom cursor-pointer flex items-center transition-all duration-300 hover:text-primary-custom hover:scale-105 nav-link">
+                    <div className="relative flex items-center">
+                      <div className="relative">
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z" />
+                        </svg>
+                        {cartCount > 0 && (
+                          <span className="absolute -top-2 -right-2 bg-primary-custom text-white text-xs font-bold rounded-full h-5 w-5 flex items-center justify-center">
+                            {cartCount}
+                          </span>
+                        )}
+                      </div>
+                      <span className="ml-2">Cart</span>
+                    </div>
+                  </Link>
+                </li>
+                <li className="text-cement font-bold flex items-center space-x-2 cursor-pointer">
+                  <Link to="/work/login" onClick={() => setMobileMenuOpen(false)} className="text-primary-custom transition-all duration-300 hover:text-primary-custom hover:scale-105 nav-link font-bold">Work at HomeXpert</Link>
+                </li>
+              </>
+            ) : showConsumerActions ? null : (
+              <li className="text-cement font-bold flex items-center space-x-2 cursor-pointer">
+                <Link to="/" onClick={() => setMobileMenuOpen(false)} className="text-primary-custom transition-all duration-300 hover:text-primary-custom hover:scale-105 nav-link font-bold">Back to Storefront</Link>
+              </li>
+            )}
           </ul>
         </div>
       )}
