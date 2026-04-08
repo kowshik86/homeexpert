@@ -40,11 +40,6 @@ const OtpVerification = () => {
     if (value && index < 5 && inputRefs.current[index + 1]) {
       inputRefs.current[index + 1].focus();
     }
-
-    // Auto-submit when all digits are entered
-    if (newOtp.every(digit => digit) && newOtp.join('').length === 6) {
-      handleSubmit({ preventDefault: () => {} });
-    }
   };
 
   const handleKeyDown = (index, e) => {
@@ -67,8 +62,11 @@ const OtpVerification = () => {
       setError('');
       setLoading(true);
       await verifyOTP(otpValue);
+      toast.success('Logged in successfully');
+      window.location.href = '/account';
     } catch (error) {
       setError(error.message || 'OTP verification failed. Please try again.');
+      toast.error(error.message || 'OTP verification failed. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -144,9 +142,9 @@ const OtpVerification = () => {
 
       <button
         type="submit"
-        disabled={loading}
+        disabled={loading || otp.join('').length !== 6}
         className={`w-full bg-[#8a4af3] text-white py-3 rounded-full hover:opacity-95 hover:shadow-lg transition-all duration-300 font-medium ${
-          loading ? 'opacity-70 cursor-not-allowed' : ''
+          loading || otp.join('').length !== 6 ? 'opacity-70 cursor-not-allowed' : ''
         }`}
       >
         {loading ? 'Verifying...' : 'Verify OTP'}

@@ -32,9 +32,8 @@ function Header() {
   }, []);
 
   const workforceRouteByRole = {
-    vendor: '/work/vendor-dashboard',
-    shopkeeper: '/work/shopkeeper-dashboard',
-    delivery: '/work/delivery-dashboard',
+    shopkeeper: '/work/shopkeeper-profile',
+    delivery: '/work/delivery-profile',
     worker: '/work/worker-dashboard',
   };
 
@@ -59,8 +58,12 @@ function Header() {
     return null;
   }, [currentUser, workforceAuth]);
 
+  const showCartLink = showConsumerActions && (!activeAccount || !activeAccount.isWorkforce);
+  const showWorkAtHomeXpertLink = showConsumerActions && !activeAccount;
+
   const handleUnifiedLogout = () => {
     const hadWorkforceSession = !!workforceAuth;
+    const hadConsumerSession = !!currentUser;
 
     if (currentUser) {
       logout();
@@ -71,15 +74,35 @@ function Header() {
 
     if (isWorkPath || isAdminPath || hadWorkforceSession) {
       navigate('/work/login');
+    } else if (hadConsumerSession) {
+      navigate('/');
     }
   };
 
   const toggleMobileMenu = () => {
     setMobileMenuOpen(!mobileMenuOpen);
   };
+
+  const renderAccountChip = (account) => {
+    if (!account) {
+      return null;
+    }
+
+    return (
+      <Link
+        to={account.accountPath}
+        className="inline-flex items-center gap-2 rounded-full border border-primary-custom/15 bg-gradient-to-r from-purple-50 to-white px-4 py-2 text-sm font-semibold text-primary-custom transition-all duration-300 hover:-translate-y-0.5 hover:shadow-md"
+      >
+        <span className="flex h-8 w-8 items-center justify-center rounded-full bg-primary-custom text-white text-xs font-bold">
+          {(account.label || 'A').charAt(0)}
+        </span>
+        <span className="max-w-[180px] truncate">{account.label}</span>
+      </Link>
+    );
+  };
   return (
     <div className="w-full">
-      <nav className="fixed top-0 left-0 right-0 z-50 bg-white shadow-[0px_4px_10px_0px_rgba(138,74,243,0.3)] p-2 flex justify-between items-center">
+      <nav className="fixed top-0 left-0 right-0 z-50 border-b border-white/70 bg-white/95 backdrop-blur-md shadow-[0px_12px_30px_-18px_rgba(138,74,243,0.55)] p-2 flex justify-between items-center">
 
         <Link
           to="/"
@@ -140,26 +163,31 @@ function Header() {
           <ul className="hidden lg:flex flex-grow justify-center space-x-8 ml-8" style={{ fontFamily: 'Gilroy, Arial, Helvetica Neue, sans-serif' }}>
             <li className="text-cement font-[600] flex items-center space-x-1 cursor-pointer">
               {activeAccount ? (
-                <div className="flex items-center space-x-4">
-                  <Link
-                    to={activeAccount.accountPath}
-                    className="text-primary-custom cursor-pointer flex items-center transition-all duration-300 hover:text-primary-custom hover:scale-105 nav-link"
-                  >
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                    </svg>
-                    <span>{activeAccount.label}</span>
-                  </Link>
-                  <button
-                    onClick={handleUnifiedLogout}
-                    aria-label="Logout"
-                    title="Logout"
-                    className="text-primary-custom cursor-pointer flex items-center justify-center transition-all duration-300 hover:text-primary-custom hover:scale-110 nav-link p-1 rounded-md"
-                  >
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-                    </svg>
-                  </button>
+                <div className="flex items-center space-x-3">
+                  {renderAccountChip(activeAccount)}
+                  {activeAccount.isWorkforce ? (
+                    <button
+                      onClick={handleUnifiedLogout}
+                      aria-label="Logout"
+                      title="Logout"
+                      className="text-primary-custom cursor-pointer flex items-center justify-center transition-all duration-300 hover:text-primary-custom hover:scale-110 nav-link p-1 rounded-md"
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                      </svg>
+                    </button>
+                  ) : (
+                    <button
+                      onClick={handleUnifiedLogout}
+                      aria-label="Logout"
+                      title="Logout"
+                      className="text-primary-custom cursor-pointer flex items-center justify-center transition-all duration-300 hover:text-primary-custom hover:scale-110 nav-link p-1 rounded-md"
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                      </svg>
+                    </button>
+                  )}
                 </div>
               ) : (
                 showConsumerActions ? (
@@ -185,7 +213,7 @@ function Header() {
                 )
               )}
             </li>
-            {showConsumerActions && !activeAccount ? (
+            {showCartLink ? (
               <>
                 <li className="text-cement font-[600] flex items-center space-x-1 cursor-pointer">
                   <Link to="/cart" className="text-primary-custom cursor-pointer flex items-center transition-all duration-300 hover:text-primary-custom hover:scale-105 nav-link">
@@ -204,9 +232,11 @@ function Header() {
                     </div>
                   </Link>
                 </li>
-                <li className="text-cement font-bold flex items-center space-x-2 cursor-pointer">
-                  <Link to="/work/login" className="text-primary-custom transition-all duration-300 hover:text-primary-custom hover:scale-105 nav-link font-bold">Work at HomeXpert</Link>
-                </li>
+                {showWorkAtHomeXpertLink ? (
+                  <li className="text-cement font-bold flex items-center space-x-2 cursor-pointer">
+                    <Link to="/work/login" className="text-primary-custom transition-all duration-300 hover:text-primary-custom hover:scale-105 nav-link font-bold">Work at HomeXpert</Link>
+                  </li>
+                ) : null}
               </>
             ) : showConsumerActions ? null : (
               <li className="text-cement font-bold flex items-center space-x-2 cursor-pointer">
@@ -226,28 +256,34 @@ function Header() {
             <li className="text-cement font-[600] flex items-center space-x-1 cursor-pointer">
               {activeAccount ? (
                 <div className="flex flex-col space-y-3">
-                  <Link
-                    to={activeAccount.accountPath}
-                    onClick={() => setMobileMenuOpen(false)}
-                    className="text-primary-custom cursor-pointer flex items-center transition-all duration-300 hover:text-primary-custom hover:scale-105 nav-link"
-                  >
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                    </svg>
-                    <span>{activeAccount.label}</span>
-                  </Link>
-                  <button
-                    onClick={() => {
-                      handleUnifiedLogout();
-                      setMobileMenuOpen(false);
-                    }}
-                    className="text-primary-custom cursor-pointer flex items-center transition-all duration-300 hover:text-primary-custom hover:scale-105 nav-link"
-                  >
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-                    </svg>
-                    Logout
-                  </button>
+                  <div onClick={() => setMobileMenuOpen(false)}>{renderAccountChip(activeAccount)}</div>
+                  {activeAccount.isWorkforce ? (
+                    <button
+                      onClick={() => {
+                        handleUnifiedLogout();
+                        setMobileMenuOpen(false);
+                      }}
+                      className="text-primary-custom cursor-pointer flex items-center transition-all duration-300 hover:text-primary-custom hover:scale-105 nav-link"
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                      </svg>
+                      Logout
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => {
+                        handleUnifiedLogout();
+                        setMobileMenuOpen(false);
+                      }}
+                      className="text-primary-custom cursor-pointer flex items-center transition-all duration-300 hover:text-primary-custom hover:scale-105 nav-link"
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                      </svg>
+                      Logout
+                    </button>
+                  )}
                 </div>
               ) : (
                 showConsumerActions ? (
@@ -274,7 +310,7 @@ function Header() {
                 )
               )}
             </li>
-            {showConsumerActions && !activeAccount ? (
+            {showCartLink ? (
               <>
                 <li className="text-cement font-[600] flex items-center space-x-1 cursor-pointer">
                   <Link to="/cart" onClick={() => setMobileMenuOpen(false)} className="text-primary-custom cursor-pointer flex items-center transition-all duration-300 hover:text-primary-custom hover:scale-105 nav-link">
@@ -293,9 +329,11 @@ function Header() {
                     </div>
                   </Link>
                 </li>
-                <li className="text-cement font-bold flex items-center space-x-2 cursor-pointer">
-                  <Link to="/work/login" onClick={() => setMobileMenuOpen(false)} className="text-primary-custom transition-all duration-300 hover:text-primary-custom hover:scale-105 nav-link font-bold">Work at HomeXpert</Link>
-                </li>
+                {showWorkAtHomeXpertLink ? (
+                  <li className="text-cement font-bold flex items-center space-x-2 cursor-pointer">
+                    <Link to="/work/login" onClick={() => setMobileMenuOpen(false)} className="text-primary-custom transition-all duration-300 hover:text-primary-custom hover:scale-105 nav-link font-bold">Work at HomeXpert</Link>
+                  </li>
+                ) : null}
               </>
             ) : showConsumerActions ? null : (
               <li className="text-cement font-bold flex items-center space-x-2 cursor-pointer">

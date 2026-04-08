@@ -23,91 +23,94 @@ const AuthModal = () => {
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 backdrop-blur-sm px-3 py-6"
       onClick={handleBackdropClick}
     >
-      <div className="bg-white rounded-lg shadow-xl w-full max-w-[700px] mx-4 overflow-hidden flex font-[Gilroy,arial,Helvetica_Neue,sans-serif] z-50 relative">
+      <div className="bg-white rounded-[28px] shadow-[0_30px_80px_rgba(15,23,42,0.28)] w-full max-w-[760px] overflow-hidden flex font-[Gilroy,arial,Helvetica_Neue,sans-serif] z-50 relative border border-white/60">
         {/* Left side - Image */}
         <div className="w-2/5 hidden md:block">
-          <div className="h-full w-full bg-[#8a4af3] flex items-center justify-center p-4">
+          <div className="h-full w-full bg-gradient-to-br from-[#6d28d9] via-[#8a4af3] to-[#c084fc] flex items-center justify-center p-6">
             <GroceryBagImage />
           </div>
         </div>
 
         {/* Right side - White background with form */}
-        <div className="flex-1 p-4 relative">
+        <div className="flex-1 p-5 md:p-6 relative bg-gradient-to-b from-white to-purple-50/30">
           <button
             onClick={closeAuthModal}
-            className="absolute top-4 right-4 text-gray-500 hover:text-gray-700"
+            className="absolute top-4 right-4 text-gray-500 hover:text-gray-700 rounded-full border border-gray-200 bg-white/90 p-2 shadow-sm"
           >
             <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
             </svg>
           </button>
 
+          <div className="pr-10">
+            <div className="inline-flex items-center rounded-full bg-primary-custom/10 px-3 py-1 text-xs font-semibold text-primary-custom">
+              Secure one-time login
+            </div>
+            <h2 className="mt-3 text-2xl font-black text-gray-900 leading-tight">
+              {otpSent ? 'Enter your verification code' : authMode === 'login' ? 'Sign in to your account' : 'Create your account'}
+            </h2>
+            <p className="mt-2 text-sm text-gray-600 max-w-md">
+              {otpSent
+                ? 'We use OTP to keep login fast and low-friction on mobile.'
+                : authMode === 'login'
+                  ? 'Continue with your mobile number and finish login with a one-time password.'
+                  : 'Create your profile once and keep orders, addresses, and account details in sync.'}
+            </p>
+          </div>
+
           {otpSent ? (
             <OtpVerification />
           ) : authMode === 'login' ? (
-            <div className="flex flex-col h-full justify-between">
-              <div>
-                <div className="flex items-center justify-center mt-6 mb-6">
-                  <div className="bg-[#f0e6ff] rounded-full p-5">
-                    <img
-                      src={mobileIllus}
-                      alt="Mobile App"
-                      className="h-16 w-16"
-                    />
-                  </div>
+            <div className="mt-6 flex flex-col gap-5">
+              <div className="flex items-center gap-4 rounded-2xl border border-purple-100 bg-white p-4 shadow-sm">
+                <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-primary-custom/10">
+                  <img
+                    src={mobileIllus}
+                    alt="Mobile App"
+                    className="h-12 w-12"
+                  />
                 </div>
-
-                <h3 className="text-xl font-bold text-center text-[#8a4af3] mb-1">
-                  Order faster & easier
-                </h3>
-                <p className="text-base text-center text-[#8a4af3] mb-1">
-                  everytime
-                </p>
-                <p className="text-sm text-center text-gray-600 mb-6">
-                  with the HomeXpert App
-                </p>
-                <LoginForm />
+                <div>
+                  <h3 className="text-lg font-bold text-gray-900">Order faster & easier</h3>
+                  <p className="text-sm text-gray-600">Sign in once, then jump back to shopping and checkout faster.</p>
+                </div>
               </div>
 
-              {/* App download buttons */}
-              <div className="mt-4">
-                <div className="flex justify-center gap-3">
-                  <a href="#" className="block">
-                    <img
-                      src={appStore}
-                      alt="Download on App Store"
-                      className="h-8"
-                    />
-                  </a>
-                  <a href="#" className="block">
-                    <img
-                      src={playStore}
-                      alt="Get it on Google Play"
-                      className="h-8"
-                    />
-                  </a>
-                </div>
+              <LoginForm />
+
+              <div className="flex flex-wrap justify-center gap-3">
+                <a href="#" className="block opacity-90 transition hover:opacity-100">
+                  <img
+                    src={appStore}
+                    alt="Download on App Store"
+                    className="h-9"
+                  />
+                </a>
+                <a href="#" className="block opacity-90 transition hover:opacity-100">
+                  <img
+                    src={playStore}
+                    alt="Get it on Google Play"
+                    className="h-9"
+                  />
+                </a>
               </div>
             </div>
           ) : (
-            <div>
-              <h3 className="text-lg font-medium text-[#8a4af3] mb-6 md:mt-8">
-                Create your HomeXpert account
-              </h3>
+            <div className="mt-6">
               <RegisterForm />
             </div>
           )}
 
           {!otpSent && (
-            <div className="mt-6 text-center">
-              <p className="text-base text-gray-600">
+            <div className="mt-6 text-center border-t border-gray-100 pt-4">
+              <p className="text-sm text-gray-600">
                 {authMode === 'login' ? "Don't have an account? " : "Already have an account? "}
                 <button
                   onClick={switchAuthMode}
-                  className="text-[#8a4af3] hover:underline font-semibold ml-1 text-base"
+                  className="text-primary-custom hover:underline font-semibold ml-1 text-sm"
                 >
                   {authMode === 'login' ? 'Register' : 'Login'}
                 </button>

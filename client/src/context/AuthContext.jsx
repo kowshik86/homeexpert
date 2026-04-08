@@ -158,6 +158,8 @@ export const AuthProvider = ({ children }) => {
 
       const data = await response.json();
 
+  localStorage.removeItem('workforceAuth');
+
       // Cart items are already stored in localStorage by the CartContext
       // No need to do anything special here to preserve them
 
@@ -183,6 +185,7 @@ export const AuthProvider = ({ children }) => {
     setAuthMode(mode);
     setAuthModalOpen(true);
     setOtpSent(false);
+    setPhoneNumber('');
     document.body.classList.add('modal-open');
   };
 
@@ -190,6 +193,7 @@ export const AuthProvider = ({ children }) => {
   const closeAuthModal = () => {
     setAuthModalOpen(false);
     setOtpSent(false);
+    setPhoneNumber('');
     document.body.classList.remove('modal-open');
   };
 
@@ -197,6 +201,7 @@ export const AuthProvider = ({ children }) => {
   const switchAuthMode = () => {
     setAuthMode(authMode === 'login' ? 'register' : 'login');
     setOtpSent(false);
+    setPhoneNumber('');
   };
 
   // Context value

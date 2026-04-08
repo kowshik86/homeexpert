@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { createShopItem } from '../../services/api';
 
 const ROLE_CONFIG = {
   vendor: {
@@ -69,6 +70,17 @@ function WorkforceAdminDashboard() {
   const [sortBy, setSortBy] = useState('name');
   const [selectedRecord, setSelectedRecord] = useState(null);
   const [deletingRecordId, setDeletingRecordId] = useState('');
+  const [productForm, setProductForm] = useState({
+    name: '',
+    category: '',
+    imageUrl: '',
+    description: '',
+    quantity: '1',
+    cost: '0',
+  });
+  const [savingProduct, setSavingProduct] = useState(false);
+  const [productMessage, setProductMessage] = useState('');
+  const [productError, setProductError] = useState('');
 
   const fetchAllRoles = async () => {
     setLoading(true);
@@ -175,6 +187,57 @@ function WorkforceAdminDashboard() {
     URL.revokeObjectURL(url);
   };
 
+  const handleCreateProduct = async (event) => {
+    event.preventDefault();
+    setProductError('');
+    setProductMessage('');
+
+    const quantity = Number(productForm.quantity);
+    const cost = Number(productForm.cost);
+
+    if (!productForm.name.trim() || !productForm.imageUrl.trim() || !productForm.description.trim()) {
+      setProductError('Name, image URL, and description are required.');
+      return;
+    }
+
+    if (Number.isNaN(quantity) || quantity < 0) {
+      setProductError('Quantity must be zero or greater.');
+      return;
+    }
+
+    if (Number.isNaN(cost) || cost < 0) {
+      setProductError('Cost must be zero or greater.');
+      return;
+    }
+
+    try {
+      setSavingProduct(true);
+      await createShopItem({
+        name: productForm.name.trim(),
+        category: productForm.category.trim() || 'uncategorized',
+        imageUrl: productForm.imageUrl.trim(),
+        description: productForm.description.trim(),
+        quantity,
+        cost,
+      });
+
+      setProductMessage('Product added to the catalog successfully.');
+      setProductForm({
+        name: '',
+        category: '',
+        imageUrl: '',
+        description: '',
+        quantity: '1',
+        cost: '0',
+      });
+      fetchAllRoles();
+    } catch (createError) {
+      setProductError(createError.message || 'Failed to create product.');
+    } finally {
+      setSavingProduct(false);
+    }
+  };
+
   const handleDeleteRecord = async (row) => {
     const roleConfig = ROLE_CONFIG[row.role];
 
@@ -239,6 +302,73 @@ function WorkforceAdminDashboard() {
             <div className="rounded-xl bg-violet-50 border border-violet-100 p-4"><p className="text-xs text-violet-700">Shopkeepers</p><p className="text-2xl font-bold text-violet-900">{summary.shopkeeper}</p></div>
             <div className="rounded-xl bg-amber-50 border border-amber-100 p-4"><p className="text-xs text-amber-700">Delivery</p><p className="text-2xl font-bold text-amber-900">{summary.delivery}</p></div>
             <div className="rounded-xl bg-emerald-50 border border-emerald-100 p-4"><p className="text-xs text-emerald-700">Workers</p><p className="text-2xl font-bold text-emerald-900">{summary.worker}</p></div>
+          </div>
+
+          <div className="mt-6 rounded-2xl border border-violet-100 bg-gradient-to-br from-violet-50 via-white to-indigo-50 p-5 md:p-6 shadow-sm">
+            <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-4 mb-4">
+              <div>
+                <p className="text-sm font-semibold text-violet-600">Catalog Management</p>
+                <h2 className="text-xl md:text-2xl font-bold text-gray-900 mt-1">Add a new product to the shared shop item catalog</h2>
+                <p className="text-gray-600 mt-2">This product becomes available for shopkeepers to stock in their shops.</p>
+              </div>
+            </div>
+
+            {productError ? <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-red-700 text-sm">{productError}</div> : null}
+            {productMessage ? <div className="mb-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-emerald-700 text-sm">{productMessage}</div> : null}
+
+            <form onSubmit={handleCreateProduct} className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+              <input
+                type="text"
+                value={productForm.name}
+                onChange={(event) => setProductForm((current) => ({ ...current, name: event.target.value }))}
+                placeholder="Product name"
+                className="border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-violet-300 focus:outline-none"
+              />
+              <input
+                type="text"
+                value={productForm.category}
+                onChange={(event) => setProductForm((current) => ({ ...current, category: event.target.value }))}
+                placeholder="Category"
+                className="border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-violet-300 focus:outline-none"
+              />
+              <input
+                type="url"
+                value={productForm.imageUrl}
+                onChange={(event) => setProductForm((current) => ({ ...current, imageUrl: event.target.value }))}
+                placeholder="Image URL"
+                className="border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-violet-300 focus:outline-none"
+              />
+              <textarea
+                value={productForm.description}
+                onChange={(event) => setProductForm((current) => ({ ...current, description: event.target.value }))}
+                placeholder="Product description"
+                rows="3"
+                className="md:col-span-2 xl:col-span-3 border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-violet-300 focus:outline-none"
+              />
+              <input
+                type="number"
+                min="0"
+                value={productForm.quantity}
+                onChange={(event) => setProductForm((current) => ({ ...current, quantity: event.target.value }))}
+                placeholder="Quantity"
+                className="border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-violet-300 focus:outline-none"
+              />
+              <input
+                type="number"
+                min="0"
+                value={productForm.cost}
+                onChange={(event) => setProductForm((current) => ({ ...current, cost: event.target.value }))}
+                placeholder="Cost"
+                className="border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-violet-300 focus:outline-none"
+              />
+              <button
+                type="submit"
+                disabled={savingProduct}
+                className="xl:col-span-3 rounded-lg bg-violet-600 px-4 py-2 font-semibold text-white hover:bg-violet-500 disabled:opacity-60 disabled:cursor-not-allowed"
+              >
+                {savingProduct ? 'Saving Product...' : 'Add Product to Catalog'}
+              </button>
+            </form>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-4 gap-3 mt-6">

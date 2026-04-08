@@ -38,12 +38,22 @@ const addCategoryToItems = (items, category) => {
   });
 };
 
+const addProductTypeToItems = (items, productType) => {
+  if (!items || !Array.isArray(items)) return [];
+
+  return items.map((item) => ({
+    ...item,
+    productType: item.productType || productType,
+  }));
+};
+
 // Fetch all shop goods
 export const fetchAllShopGoods = async () => {
   try {
     console.log('Fetching all shop goods...');
     const response = await fetch(`${API_BASE_URL}/shopgoods-api/shopGoods`);
-    return await handleApiResponse(response, 'Failed to fetch shop goods');
+    const data = await handleApiResponse(response, 'Failed to fetch shop goods');
+    return addProductTypeToItems(data, 'shopGood');
   } catch (error) {
     console.error('Error fetching shop goods:', error);
     return [];
@@ -60,7 +70,8 @@ export const fetchShopGoodsByCategory = async (category) => {
     const data = await handleApiResponse(response, `Failed to fetch shop goods for category: ${category}`);
 
     // Add category to items if it's missing
-    return addCategoryToItems(data, category);
+    const normalized = addCategoryToItems(data, category);
+    return addProductTypeToItems(normalized, 'shopGood');
   } catch (error) {
     console.error(`Error fetching shop goods for category ${category}:`, error);
 
@@ -71,7 +82,8 @@ export const fetchShopGoodsByCategory = async (category) => {
       const allGoods = await handleApiResponse(response, 'Failed to fetch shop goods');
 
       // Return all goods with the category added
-      return addCategoryToItems(allGoods, category);
+      const normalized = addCategoryToItems(allGoods, category);
+      return addProductTypeToItems(normalized, 'shopGood');
     } catch (fallbackError) {
       console.error('Fallback error:', fallbackError);
       return [];
@@ -84,7 +96,8 @@ export const fetchAllShopItems = async () => {
   try {
     console.log('Fetching all shop items...');
     const response = await fetch(`${API_BASE_URL}/shopitems-api/shopitems`);
-    return await handleApiResponse(response, 'Failed to fetch shop items');
+    const data = await handleApiResponse(response, 'Failed to fetch shop items');
+    return addProductTypeToItems(data, 'shopItem');
   } catch (error) {
     console.error('Error fetching shop items:', error);
     return [];
@@ -101,7 +114,8 @@ export const fetchShopItemsByCategory = async (category) => {
     const data = await handleApiResponse(response, `Failed to fetch shop items for category: ${category}`);
 
     // Add category to items if it's missing
-    return addCategoryToItems(data, category);
+    const normalized = addCategoryToItems(data, category);
+    return addProductTypeToItems(normalized, 'shopItem');
   } catch (error) {
     console.error(`Error fetching shop items for category ${category}:`, error);
 
@@ -112,10 +126,160 @@ export const fetchShopItemsByCategory = async (category) => {
       const allItems = await handleApiResponse(response, 'Failed to fetch shop items');
 
       // Return all items with the category added
-      return addCategoryToItems(allItems, category);
+      const normalized = addCategoryToItems(allItems, category);
+      return addProductTypeToItems(normalized, 'shopItem');
     } catch (fallbackError) {
       console.error('Fallback error:', fallbackError);
       return [];
     }
+  }
+};
+
+// Fetch all shopkeepers
+export const fetchAllShopkeepers = async () => {
+  try {
+    console.log('Fetching all shopkeepers...');
+    const response = await fetch(`${API_BASE_URL}/shopkeeper-api/shopkeepers`);
+    return await handleApiResponse(response, 'Failed to fetch shopkeepers');
+  } catch (error) {
+    console.error('Error fetching shopkeepers:', error);
+    return [];
+  }
+};
+
+// Fetch a single shopkeeper by ID
+export const fetchShopkeeperById = async (shopkeeperId) => {
+  try {
+    if (!shopkeeperId) {
+      return null;
+    }
+
+    const response = await fetch(`${API_BASE_URL}/shopkeeper-api/shopkeeper/${shopkeeperId}`);
+    const data = await handleApiResponse(response, 'Failed to fetch shopkeeper');
+    if (Array.isArray(data)) {
+      return data[0] || null;
+    }
+
+    return data || null;
+  } catch (error) {
+    console.error('Error fetching shopkeeper:', error);
+    return null;
+  }
+};
+
+// Create a new global shop item
+export const createShopItem = async (payload) => {
+  try {
+    const response = await fetch(`${API_BASE_URL}/shopitems-api/shopitem`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload),
+    });
+
+    return await handleApiResponse(response, 'Failed to create shop item');
+  } catch (error) {
+    console.error('Error creating shop item:', error);
+    throw error;
+  }
+};
+
+// Update an existing global shop item
+export const updateShopItem = async (shopItemId, payload) => {
+  try {
+    const response = await fetch(`${API_BASE_URL}/shopitems-api/shopitem/${shopItemId}`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload),
+    });
+
+    return await handleApiResponse(response, 'Failed to update shop item');
+  } catch (error) {
+    console.error('Error updating shop item:', error);
+    throw error;
+  }
+};
+
+// Fetch active orders for delivery dashboard
+export const fetchDeliveryOrders = async (deliveryPersonId) => {
+  try {
+    const query = deliveryPersonId ? `?deliveryPersonId=${encodeURIComponent(deliveryPersonId)}` : '';
+    const response = await fetch(`${API_BASE_URL}/order-api/delivery/orders${query}`);
+    return await handleApiResponse(response, 'Failed to fetch delivery orders');
+  } catch (error) {
+    console.error('Error fetching delivery orders:', error);
+    return [];
+  }
+};
+
+// Assign an order to a delivery person and move it to out-for-delivery
+export const assignOrderToDeliveryPerson = async (orderId, deliveryPersonId) => {
+  try {
+    const response = await fetch(`${API_BASE_URL}/order-api/delivery/order/${orderId}/assign`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ deliveryPersonId }),
+    });
+
+    return await handleApiResponse(response, 'Failed to assign order');
+  } catch (error) {
+    console.error('Error assigning order:', error);
+    throw error;
+  }
+};
+
+// Update order status from delivery dashboard
+export const updateDeliveryOrderStatus = async (orderId, orderStatus, deliveryPersonId) => {
+  try {
+    const response = await fetch(`${API_BASE_URL}/order-api/order/${orderId}/status`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ orderStatus, deliveryPersonId }),
+    });
+
+    return await handleApiResponse(response, 'Failed to update delivery order status');
+  } catch (error) {
+    console.error('Error updating delivery order status:', error);
+    throw error;
+  }
+};
+
+// Fetch saved addresses for a user
+export const fetchUserAddresses = async (userId) => {
+  try {
+    if (!userId) {
+      return [];
+    }
+
+    const response = await fetch(`${API_BASE_URL}/address-api/addresses/${userId}`);
+    return await handleApiResponse(response, 'Failed to fetch addresses');
+  } catch (error) {
+    console.error('Error fetching addresses:', error);
+    return [];
+  }
+};
+
+// Place a new order
+export const createOrder = async (payload) => {
+  try {
+    const response = await fetch(`${API_BASE_URL}/order-api/order`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload),
+    });
+
+    return await handleApiResponse(response, 'Failed to place order');
+  } catch (error) {
+    console.error('Error placing order:', error);
+    throw error;
   }
 };

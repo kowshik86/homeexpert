@@ -1,49 +1,121 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useCart } from '../context/CartContext';
 import { useAuth } from '../context/AuthContext';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
+import { toast } from 'react-toastify';
+import { createOrder, fetchUserAddresses } from '../services/api';
 
 const Cart = () => {
-  const { cartItems, removeFromCart, updateQuantity, cartTotal, clearCart, addToCart } = useCart();
+  const navigate = useNavigate();
+  const { cartItems, removeFromCart, updateQuantity, cartTotal, clearCart } = useCart();
   const { currentUser, openAuthModal } = useAuth();
+  const [addresses, setAddresses] = useState([]);
+  const [selectedAddressId, setSelectedAddressId] = useState('');
+  const [loadingAddresses, setLoadingAddresses] = useState(false);
+  const [placingOrder, setPlacingOrder] = useState(false);
 
-  // Log cart items when component mounts and force reload if needed
+  const deliveryFee = 40;
+  const finalTotal = cartTotal + deliveryFee;
+
   useEffect(() => {
-    console.log('Cart component mounted, cart items:', cartItems);
-
-    // Check if cart items are loaded from localStorage
-    if (cartItems.length === 0) {
-      const storedCart = localStorage.getItem('cart');
-      if (storedCart) {
-        try {
-          const parsedCart = JSON.parse(storedCart);
-          console.log('Found cart items in localStorage:', parsedCart);
-
-          // If CartContext doesn't have items but localStorage does, manually update cart
-          if (parsedCart && parsedCart.length > 0) {
-            console.log('Manually updating cart items from localStorage');
-
-            // We need to update the cart items in the CartContext
-            // Instead of adding each item individually, we'll set them all at once
-            // This is more efficient and avoids potential race conditions
-            parsedCart.forEach(item => {
-              // Use a setTimeout to ensure each item is added separately
-              // This helps avoid race conditions in React state updates
-              setTimeout(() => {
-                // Make sure we're not passing the quantity from localStorage directly
-                // This prevents the issue where the quantity gets added multiple times
-                const { quantity, ...itemWithoutQuantity } = item;
-                // Add the item with its current quantity
-                addToCart({...itemWithoutQuantity, quantity: quantity});
-              }, 0);
-            });
-          }
-        } catch (error) {
-          console.error('Error parsing cart from localStorage in Cart component:', error);
-        }
+    const loadAddresses = async () => {
+      if (!currentUser?._id) {
+        setAddresses([]);
+        setSelectedAddressId('');
+        return;
       }
+
+      setLoadingAddresses(true);
+      const response = await fetchUserAddresses(currentUser._id);
+      const normalized = Array.isArray(response) ? response : [];
+      setAddresses(normalized);
+
+      const defaultAddress = normalized.find((address) => address.isDefault);
+      setSelectedAddressId(defaultAddress?._id || normalized[0]?._id || '');
+      setLoadingAddresses(false);
+    };
+
+    loadAddresses();
+  }, [currentUser]);
+
+  const selectedAddress = useMemo(
+    () => addresses.find((address) => address._id === selectedAddressId) || null,
+    [addresses, selectedAddressId],
+  );
+
+  const buildOrderItems = () => {
+    return cartItems.map((item) => {
+      const name = Array.isArray(item.name) ? item.name[0] : item.name;
+      const price = Number(item.price || item.cost || 0);
+      const quantity = Number(item.quantity || 1);
+
+      return {
+        productId: item._id,
+        productType: item.productType === 'shopGood' ? 'shopGood' : 'shopItem',
+        name: name || 'Product',
+        imageUrl: item.imageUrl || 'https://via.placeholder.com/300x200?text=No+Image',
+        price,
+        quantity,
+        totalPrice: Number((price * quantity).toFixed(2)),
+      };
+    });
+  };
+
+  const handleProceedCheckout = async () => {
+    if (!currentUser) {
+      openAuthModal('login');
+      return;
     }
-  }, []);
+
+    if (!selectedAddress) {
+      toast.error('Please select a delivery address before checkout.');
+      return;
+    }
+
+    const orderItems = buildOrderItems();
+    if (orderItems.length === 0) {
+      toast.error('Your cart is empty.');
+      return;
+    }
+
+    try {
+      setPlacingOrder(true);
+
+      const payload = {
+        userId: currentUser._id,
+        orderItems,
+        deliveryAddress: {
+          fullName: selectedAddress.fullName,
+          mobileNumber: selectedAddress.mobileNumber,
+          addressLine1: selectedAddress.addressLine1,
+          addressLine2: selectedAddress.addressLine2 || '',
+          city: selectedAddress.city,
+          state: selectedAddress.state,
+          pincode: selectedAddress.pincode,
+          landmark: selectedAddress.landmark || '',
+          addressType: selectedAddress.addressType || 'home',
+          isDefault: !!selectedAddress.isDefault,
+        },
+        paymentMethod: 'COD',
+        paymentStatus: 'PENDING',
+        orderStatus: 'PLACED',
+        subtotal: Number(cartTotal.toFixed(2)),
+        deliveryFee,
+        discount: 0,
+        totalAmount: Number(finalTotal.toFixed(2)),
+        expectedDeliveryTime: new Date(Date.now() + 35 * 60 * 1000),
+      };
+
+      await createOrder(payload);
+      clearCart();
+      toast.success('Order placed successfully. Delivery partner has been notified.');
+      navigate('/account');
+    } catch (error) {
+      toast.error(error.message || 'Failed to place your order. Please try again.');
+    } finally {
+      setPlacingOrder(false);
+    }
+  };
 
   // Cart component logic
 
@@ -195,31 +267,58 @@ const Cart = () => {
 
             <div className="flex justify-between mb-2">
               <span className="text-gray-600 text-sm md:text-base">Shipping</span>
-              <span className="font-medium text-sm md:text-base">₹40.00</span>
+              <span className="font-medium text-sm md:text-base">₹{deliveryFee.toFixed(2)}</span>
             </div>
 
             <div className="border-t border-gray-200 my-3 md:my-4"></div>
 
             <div className="flex justify-between mb-4 md:mb-6">
               <span className="text-base md:text-lg font-semibold text-gray-800">Total</span>
-              <span className="text-base md:text-lg font-semibold text-primary-custom">₹{(cartTotal + 40).toFixed(2)}</span>
+              <span className="text-base md:text-lg font-semibold text-primary-custom">₹{finalTotal.toFixed(2)}</span>
             </div>
 
+            {currentUser ? (
+              <div className="mb-4 rounded-md border border-gray-200 p-3 bg-gray-50">
+                <p className="text-sm font-semibold text-gray-800 mb-2">Delivery Address</p>
+                {loadingAddresses ? (
+                  <p className="text-sm text-gray-500">Loading addresses...</p>
+                ) : addresses.length === 0 ? (
+                  <div className="text-sm text-gray-600 space-y-2">
+                    <p>No saved address found. Add one from your account.</p>
+                    <Link to="/account" className="inline-block text-primary-custom font-semibold hover:underline">
+                      Go to Account
+                    </Link>
+                  </div>
+                ) : (
+                  <>
+                    <select
+                      value={selectedAddressId}
+                      onChange={(event) => setSelectedAddressId(event.target.value)}
+                      className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-custom/40"
+                    >
+                      {addresses.map((address) => (
+                        <option key={address._id} value={address._id}>
+                          {address.fullName} - {address.city} ({address.pincode})
+                        </option>
+                      ))}
+                    </select>
+                    {selectedAddress ? (
+                      <p className="mt-2 text-xs text-gray-600">
+                        {selectedAddress.addressLine1}
+                        {selectedAddress.addressLine2 ? `, ${selectedAddress.addressLine2}` : ''}, {selectedAddress.city}, {selectedAddress.state} - {selectedAddress.pincode}
+                      </p>
+                    ) : null}
+                  </>
+                )}
+              </div>
+            ) : null}
+
             <button
-              onClick={() => {
-                // Store cart items in localStorage (already implemented in CartContext)
-                if (!currentUser) {
-                  // If user is not logged in, open auth modal
-                  openAuthModal('login');
-                } else {
-                  // If user is logged in, proceed to checkout
-                  // You can add your checkout logic here
-                  alert('Proceeding to checkout...');
-                }
-              }}
+              onClick={handleProceedCheckout}
+              disabled={placingOrder || (currentUser && addresses.length === 0)}
               className="w-full bg-primary-custom text-white py-2 md:py-3 rounded-md hover:bg-opacity-80 hover:shadow-md transition-all duration-300 transform hover:scale-105 text-sm md:text-base font-[Gilroy,_Arial,_Helvetica_Neue,_sans-serif]"
             >
-              {currentUser ? 'Proceed to Checkout' : 'Login to Checkout'}
+              {placingOrder ? 'Placing Order...' : currentUser ? 'Proceed to Checkout' : 'Login to Checkout'}
             </button>
           </div>
         </div>

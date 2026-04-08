@@ -65,7 +65,7 @@ const RegisterForm = () => {
   };
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-4">
+    <form onSubmit={handleSubmit} className="space-y-4 rounded-2xl border border-gray-100 bg-white p-4 shadow-sm">
       {error && (
         <div className="bg-red-50 text-red-500 p-3 rounded-md text-sm">
           {error}
@@ -83,7 +83,7 @@ const RegisterForm = () => {
             type="text"
             value={formData.firstName}
             onChange={handleChange}
-            placeholder="First Name"
+            placeholder="First name"
             className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#8a4af3] focus:border-transparent"
             required
           />
@@ -98,7 +98,7 @@ const RegisterForm = () => {
             type="text"
             value={formData.lastName}
             onChange={handleChange}
-            placeholder="Last Name"
+            placeholder="Last name"
             className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#8a4af3] focus:border-transparent"
           />
         </div>
@@ -114,7 +114,7 @@ const RegisterForm = () => {
           type="email"
           value={formData.email}
           onChange={handleChange}
-          placeholder="Email Address"
+          placeholder="Email address"
           className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#8a4af3] focus:border-transparent"
         />
       </div>
@@ -129,7 +129,7 @@ const RegisterForm = () => {
           type="tel"
           value={formData.mobileNumber}
           onChange={handleChange}
-          placeholder="Phone Number"
+          placeholder="10-digit mobile number"
           className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#8a4af3] focus:border-transparent"
           required
         />

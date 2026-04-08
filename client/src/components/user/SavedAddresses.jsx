@@ -1,6 +1,80 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { toast } from 'react-toastify';
+import { MapContainer, Marker, TileLayer, useMap, useMapEvents } from 'react-leaflet';
+import L from 'leaflet';
+import 'leaflet/dist/leaflet.css';
+
+const DEFAULT_CENTER = { lat: 12.9716, lng: 77.5946 };
+
+delete L.Icon.Default.prototype._getIconUrl;
+L.Icon.Default.mergeOptions({
+  iconRetinaUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
+  iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
+  shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
+});
+
+const buildAddressLine = (address) => {
+  const lineParts = [
+    address?.house_number,
+    address?.road,
+    address?.suburb,
+    address?.neighbourhood,
+  ].filter(Boolean);
+
+  return lineParts.join(', ');
+};
+
+const getCityName = (address) => {
+  return address?.city || address?.town || address?.village || address?.county || '';
+};
+
+const geocodePlace = async (query) => {
+  const response = await fetch(
+    `https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&limit=5&q=${encodeURIComponent(query)}`,
+    { headers: { 'Accept-Language': 'en' } },
+  );
+
+  if (!response.ok) {
+    throw new Error('Unable to search this place right now.');
+  }
+
+  const payload = await response.json();
+  return Array.isArray(payload) ? payload : [];
+};
+
+const reverseGeocode = async (lat, lng) => {
+  const response = await fetch(
+    `https://nominatim.openstreetmap.org/reverse?format=json&addressdetails=1&lat=${lat}&lon=${lng}`,
+    { headers: { 'Accept-Language': 'en' } },
+  );
+
+  if (!response.ok) {
+    throw new Error('Unable to fetch location details.');
+  }
+
+  return await response.json();
+};
+
+function MapRecenter({ center }) {
+  const map = useMap();
+
+  useEffect(() => {
+    map.flyTo([center.lat, center.lng], 16, { duration: 0.8 });
+  }, [center, map]);
+
+  return null;
+}
+
+function MapClickHandler({ onPick }) {
+  useMapEvents({
+    click(event) {
+      onPick(event.latlng);
+    },
+  });
+
+  return null;
+}
 
 const SavedAddresses = () => {
   const { currentUser } = useAuth();
@@ -8,6 +82,12 @@ const SavedAddresses = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [isAddingAddress, setIsAddingAddress] = useState(false);
   const [isEditingAddress, setIsEditingAddress] = useState(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState([]);
+  const [searchingLocation, setSearchingLocation] = useState(false);
+  const [resolvingLocation, setResolvingLocation] = useState(false);
+  const [selectedCoords, setSelectedCoords] = useState(DEFAULT_CENTER);
+  const [mapCenter, setMapCenter] = useState(DEFAULT_CENTER);
   const [formData, setFormData] = useState({
     fullName: '',
     mobileNumber: '',
@@ -18,7 +98,7 @@ const SavedAddresses = () => {
     pincode: '',
     landmark: '',
     addressType: 'home',
-    isDefault: false
+    isDefault: false,
   });
 
   useEffect(() => {
@@ -53,6 +133,65 @@ const SavedAddresses = () => {
     }));
   };
 
+  const applyLocationData = (locationPayload, lat, lng) => {
+    const address = locationPayload?.address || {};
+    const bestLine = buildAddressLine(address) || locationPayload?.display_name || '';
+
+    setSelectedCoords({ lat, lng });
+    setMapCenter({ lat, lng });
+    setSearchQuery(locationPayload?.display_name || '');
+    setFormData((prev) => ({
+      ...prev,
+      addressLine1: bestLine,
+      city: getCityName(address),
+      state: address?.state || prev.state,
+      pincode: address?.postcode || prev.pincode,
+      landmark: prev.landmark || address?.suburb || address?.neighbourhood || '',
+    }));
+  };
+
+  const handleLocationSearch = async () => {
+    const query = searchQuery.trim();
+    if (!query) {
+      toast.error('Type an area or address to search on map.');
+      return;
+    }
+
+    try {
+      setSearchingLocation(true);
+      const results = await geocodePlace(query);
+      setSearchResults(results);
+
+      if (results.length === 0) {
+        toast.info('No matching places found. Try another nearby landmark.');
+      }
+    } catch (error) {
+      toast.error(error.message || 'Place search failed.');
+    } finally {
+      setSearchingLocation(false);
+    }
+  };
+
+  const selectSearchResult = (result) => {
+    const lat = Number(result.lat);
+    const lng = Number(result.lon);
+
+    applyLocationData(result, lat, lng);
+    setSearchResults([]);
+  };
+
+  const handleMapPick = async (latlng) => {
+    try {
+      setResolvingLocation(true);
+      const resolved = await reverseGeocode(latlng.lat, latlng.lng);
+      applyLocationData(resolved, latlng.lat, latlng.lng);
+    } catch (error) {
+      toast.error(error.message || 'Could not fetch place details from map pin.');
+    } finally {
+      setResolvingLocation(false);
+    }
+  };
+
   const handleAddAddress = () => {
     setFormData({
       fullName: currentUser?.firstName + ' ' + (currentUser?.lastName || ''),
@@ -64,8 +203,12 @@ const SavedAddresses = () => {
       pincode: '',
       landmark: '',
       addressType: 'home',
-      isDefault: addresses.length === 0 // Make default if it's the first address
+      isDefault: addresses.length === 0,
     });
+    setSearchQuery('');
+    setSearchResults([]);
+    setSelectedCoords(DEFAULT_CENTER);
+    setMapCenter(DEFAULT_CENTER);
     setIsAddingAddress(true);
     setIsEditingAddress(null);
   };
@@ -81,8 +224,27 @@ const SavedAddresses = () => {
       pincode: address.pincode,
       landmark: address.landmark || '',
       addressType: address.addressType,
-      isDefault: address.isDefault
+      isDefault: address.isDefault,
     });
+    const editQuery = [address.addressLine1, address.city, address.state, address.pincode].filter(Boolean).join(', ');
+    setSearchQuery(editQuery);
+    setSearchResults([]);
+    setSelectedCoords(DEFAULT_CENTER);
+    setMapCenter(DEFAULT_CENTER);
+
+    geocodePlace(editQuery)
+      .then((results) => {
+        if (Array.isArray(results) && results.length > 0) {
+          const lat = Number(results[0].lat);
+          const lng = Number(results[0].lon);
+          setSelectedCoords({ lat, lng });
+          setMapCenter({ lat, lng });
+        }
+      })
+      .catch(() => {
+        // Keep default center if geocoding the existing address fails.
+      });
+
     setIsEditingAddress(address._id);
     setIsAddingAddress(false);
   };
@@ -90,15 +252,27 @@ const SavedAddresses = () => {
   const handleCancelForm = () => {
     setIsAddingAddress(false);
     setIsEditingAddress(null);
+    setSearchResults([]);
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setIsLoading(true);
 
+    if (!formData.fullName.trim() || !formData.mobileNumber.trim() || !formData.addressLine1.trim()) {
+      toast.error('Name, mobile and selected address are required.');
+      setIsLoading(false);
+      return;
+    }
+
+    if (!formData.city.trim() || !formData.state.trim() || !formData.pincode.trim()) {
+      toast.error('Please enter city, state and pincode before saving.');
+      setIsLoading(false);
+      return;
+    }
+
     try {
       if (isAddingAddress) {
-        // Add new address
         const response = await fetch('http://localhost:3000/address-api/address', {
           method: 'POST',
           headers: {
@@ -106,7 +280,7 @@ const SavedAddresses = () => {
           },
           body: JSON.stringify({
             ...formData,
-            userId: currentUser._id
+            userId: currentUser._id,
           }),
         });
 
@@ -116,7 +290,6 @@ const SavedAddresses = () => {
 
         toast.success('Address added successfully');
       } else if (isEditingAddress) {
-        // Update existing address
         const response = await fetch(`http://localhost:3000/address-api/address/${isEditingAddress}`, {
           method: 'PUT',
           headers: {
@@ -132,12 +305,11 @@ const SavedAddresses = () => {
         toast.success('Address updated successfully');
       }
 
-      // Refresh addresses
       fetchAddresses();
-      
-      // Reset form
+
       setIsAddingAddress(false);
       setIsEditingAddress(null);
+      setSearchResults([]);
     } catch (error) {
       toast.error(error.message || 'Failed to save address');
     } finally {
@@ -213,11 +385,81 @@ const SavedAddresses = () => {
       </div>
 
       {(isAddingAddress || isEditingAddress) ? (
-        <div className="bg-gray-50 rounded-lg p-6 mb-6">
-          <h3 className="text-lg font-medium text-gray-900 mb-4">
+        <div className="bg-gradient-to-br from-cyan-50 via-white to-emerald-50 rounded-2xl p-6 mb-6 border border-cyan-100 shadow-sm">
+          <h3 className="text-lg font-semibold text-gray-900 mb-4">
             {isAddingAddress ? 'Add New Address' : 'Edit Address'}
           </h3>
+
+          <div className="rounded-xl border border-cyan-100 bg-white p-4 mb-5">
+            <p className="text-xs uppercase tracking-wide text-cyan-700 font-semibold">Step 1</p>
+            <p className="text-sm text-gray-700 mt-1">Search your area and tap exact location on map.</p>
+
+            <div className="mt-3 flex flex-col sm:flex-row gap-2">
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(event) => setSearchQuery(event.target.value)}
+                placeholder="Search area, society, landmark"
+                className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-cyan-300"
+              />
+              <button
+                type="button"
+                onClick={handleLocationSearch}
+                className="rounded-lg bg-cyan-600 px-4 py-2 text-sm font-semibold text-white hover:bg-cyan-500"
+              >
+                {searchingLocation ? 'Searching...' : 'Search'}
+              </button>
+            </div>
+
+            {searchResults.length > 0 ? (
+              <div className="mt-3 max-h-44 overflow-y-auto rounded-lg border border-gray-200 bg-white">
+                {searchResults.map((result) => (
+                  <button
+                    key={`${result.place_id}-${result.lat}-${result.lon}`}
+                    type="button"
+                    onClick={() => selectSearchResult(result)}
+                    className="w-full text-left px-3 py-2 text-sm border-b border-gray-100 last:border-b-0 hover:bg-cyan-50"
+                  >
+                    {result.display_name}
+                  </button>
+                ))}
+              </div>
+            ) : null}
+
+            <div className="mt-3 rounded-xl overflow-hidden border border-gray-200">
+              <MapContainer
+                center={[mapCenter.lat, mapCenter.lng]}
+                zoom={15}
+                scrollWheelZoom
+                style={{ height: 300, width: '100%' }}
+              >
+                <TileLayer
+                  attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+                  url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                />
+                <MapRecenter center={mapCenter} />
+                <MapClickHandler onPick={handleMapPick} />
+                <Marker position={[selectedCoords.lat, selectedCoords.lng]} />
+              </MapContainer>
+            </div>
+
+            <p className="mt-2 text-xs text-gray-500">
+              {resolvingLocation
+                ? 'Fetching exact residential details from selected pin...'
+                : 'Tip: Tap exact building entrance for accurate delivery pin.'}
+            </p>
+          </div>
+
           <form onSubmit={handleSubmit} className="space-y-4">
+            <div className="rounded-xl border border-emerald-100 bg-emerald-50 p-3 text-sm text-emerald-900">
+              <p className="font-semibold">Detected Location</p>
+              <p className="mt-1">{formData.addressLine1 || 'Select your location from map to auto-fill address details.'}</p>
+              {formData.city || formData.state || formData.pincode ? (
+                <p className="mt-1 text-emerald-800">{formData.city}, {formData.state} - {formData.pincode}</p>
+              ) : null}
+              <p className="mt-2 text-xs text-emerald-700">You can edit city, state and pincode manually if auto-detection is incomplete.</p>
+            </div>
+
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <label htmlFor="fullName" className="block text-sm font-medium text-gray-700 mb-1">
@@ -251,7 +493,7 @@ const SavedAddresses = () => {
 
             <div>
               <label htmlFor="addressLine1" className="block text-sm font-medium text-gray-700 mb-1">
-                Address Line 1*
+                Primary Address (auto-filled from map)*
               </label>
               <input
                 type="text"
@@ -259,7 +501,7 @@ const SavedAddresses = () => {
                 name="addressLine1"
                 value={formData.addressLine1}
                 onChange={handleChange}
-                placeholder="House No., Building Name"
+                placeholder="Tap map to capture your exact location"
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-custom/50"
                 required
               />
@@ -267,7 +509,7 @@ const SavedAddresses = () => {
 
             <div>
               <label htmlFor="addressLine2" className="block text-sm font-medium text-gray-700 mb-1">
-                Address Line 2
+                Flat / Floor / Area details
               </label>
               <input
                 type="text"
@@ -275,7 +517,7 @@ const SavedAddresses = () => {
                 name="addressLine2"
                 value={formData.addressLine2}
                 onChange={handleChange}
-                placeholder="Street, Area"
+                placeholder="Flat no, floor, wing (optional)"
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-custom/50"
               />
             </div>
@@ -338,47 +580,6 @@ const SavedAddresses = () => {
                 placeholder="Nearby landmark (optional)"
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-custom/50"
               />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Address Type
-              </label>
-              <div className="flex space-x-4">
-                <label className="inline-flex items-center">
-                  <input
-                    type="radio"
-                    name="addressType"
-                    value="home"
-                    checked={formData.addressType === 'home'}
-                    onChange={handleChange}
-                    className="h-4 w-4 text-primary-custom focus:ring-primary-custom/50 border-gray-300"
-                  />
-                  <span className="ml-2 text-sm text-gray-700">Home</span>
-                </label>
-                <label className="inline-flex items-center">
-                  <input
-                    type="radio"
-                    name="addressType"
-                    value="work"
-                    checked={formData.addressType === 'work'}
-                    onChange={handleChange}
-                    className="h-4 w-4 text-primary-custom focus:ring-primary-custom/50 border-gray-300"
-                  />
-                  <span className="ml-2 text-sm text-gray-700">Work</span>
-                </label>
-                <label className="inline-flex items-center">
-                  <input
-                    type="radio"
-                    name="addressType"
-                    value="other"
-                    checked={formData.addressType === 'other'}
-                    onChange={handleChange}
-                    className="h-4 w-4 text-primary-custom focus:ring-primary-custom/50 border-gray-300"
-                  />
-                  <span className="ml-2 text-sm text-gray-700">Other</span>
-                </label>
-              </div>
             </div>
 
             <div className="flex items-center">
@@ -445,28 +646,14 @@ const SavedAddresses = () => {
               )}
               
               <div className="flex items-start mb-2">
-                <div className={`p-2 rounded-full ${
-                  address.addressType === 'home' ? 'bg-blue-100 text-blue-600' :
-                  address.addressType === 'work' ? 'bg-green-100 text-green-600' :
-                  'bg-purple-100 text-purple-600'
-                }`}>
-                  {address.addressType === 'home' ? (
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
-                    </svg>
-                  ) : address.addressType === 'work' ? (
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2 2v2m4 6h.01M5 20h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-                    </svg>
-                  ) : (
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
-                    </svg>
-                  )}
+                <div className="p-2 rounded-full bg-cyan-100 text-cyan-700">
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                  </svg>
                 </div>
                 <div className="ml-3 mt-1">
-                  <h3 className="text-base font-medium text-gray-900 capitalize">{address.addressType}</h3>
+                  <h3 className="text-base font-medium text-gray-900">Residential Address</h3>
                 </div>
               </div>
               

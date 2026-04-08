@@ -2,11 +2,6 @@ import React, { useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 
 const ROLE_CONFIG = {
-  vendor: {
-    label: 'Vendor',
-    apiBase: 'http://localhost:3000/vendor-api/auth',
-    redirectPath: '/work/vendor-dashboard',
-  },
   shopkeeper: {
     label: 'Shopkeeper',
     apiBase: 'http://localhost:3000/shopkeeper-api/auth',
@@ -34,7 +29,7 @@ function WorkLogin() {
 
   const navigate = useNavigate();
   const [authMode, setAuthMode] = useState('login');
-  const [selectedRole, setSelectedRole] = useState('vendor');
+  const [selectedRole, setSelectedRole] = useState('shopkeeper');
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [mobileNumber, setMobileNumber] = useState('');
@@ -115,7 +110,7 @@ function WorkLogin() {
       profileImg: profileImageData || undefined,
     };
 
-    if (selectedRole === 'vendor' || selectedRole === 'shopkeeper') {
+    if (selectedRole === 'shopkeeper') {
       return {
         ...basePayload,
         shopName: shopName.trim(),
@@ -181,7 +176,7 @@ function WorkLogin() {
       return 'Password and confirm password do not match.';
     }
 
-    if (selectedRole === 'vendor' || selectedRole === 'shopkeeper') {
+    if (selectedRole === 'shopkeeper') {
       if (!shopName.trim() || !state.trim() || !city.trim() || !pincode.trim() || !flatNo.trim() || !landmark.trim() || !area.trim()) {
         return 'Please complete shop and address details.';
       }
@@ -243,6 +238,8 @@ function WorkLogin() {
 
       const data = await response.json();
 
+      localStorage.removeItem('currentUser');
+
       localStorage.setItem(
         'workforceAuth',
         JSON.stringify({
@@ -282,7 +279,7 @@ function WorkLogin() {
       <div className="max-w-4xl mx-auto bg-white rounded-2xl shadow-lg border border-purple-100 overflow-hidden">
         <div className="p-6 md:p-8 bg-gradient-to-r from-purple-50 to-violet-50 border-b border-purple-100">
           <h1 className="text-2xl md:text-3xl font-bold text-primary-custom">Work at HomeXpert</h1>
-          <p className="text-gray-600 mt-2">Professional workforce authentication for Vendor, Shopkeeper, Delivery Person, and Worker.</p>
+          <p className="text-gray-600 mt-2">Professional workforce authentication for Shopkeeper, Delivery Person, and Worker.</p>
         </div>
 
         <div className="p-6 md:p-8">
@@ -317,7 +314,7 @@ function WorkLogin() {
             </button>
           </div>
 
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mb-6">
             {Object.entries(ROLE_CONFIG).map(([roleKey, config]) => (
               <button
                 key={roleKey}
@@ -415,7 +412,7 @@ function WorkLogin() {
                   />
                 </div>
 
-                {(selectedRole === 'vendor' || selectedRole === 'shopkeeper') && (
+                {selectedRole === 'shopkeeper' && (
                   <>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <div>
@@ -467,7 +464,7 @@ function WorkLogin() {
                   </>
                 )}
 
-                {(selectedRole === 'vendor' || selectedRole === 'shopkeeper' || selectedRole === 'worker') && (
+                {(selectedRole === 'shopkeeper' || selectedRole === 'worker') && (
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">State</label>

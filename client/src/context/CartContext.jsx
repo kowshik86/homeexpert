@@ -1,4 +1,5 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useMemo } from 'react';
+import { useAuth } from './AuthContext';
 
 // Create the cart context
 const CartContext = createContext();
@@ -8,13 +9,22 @@ export const useCart = () => {
   return useContext(CartContext);
 };
 
+const getCartStorageKey = (user) => {
+  if (!user) {
+    return 'cart:guest';
+  }
+
+  const userId = user._id || user.mobileNumber || user.email;
+  return userId ? `cart:user:${userId}` : 'cart:guest';
+};
+
 // Helper function to get cart from localStorage
-const getCartFromStorage = () => {
+const getCartFromStorage = (storageKey) => {
   try {
-    const storedCart = localStorage.getItem('cart');
+    const storedCart = localStorage.getItem(storageKey);
     if (storedCart) {
       const parsedCart = JSON.parse(storedCart);
-      console.log('Retrieved cart from localStorage:', parsedCart);
+      console.log(`Retrieved cart from localStorage (${storageKey}):`, parsedCart);
       return parsedCart;
     }
   } catch (error) {
@@ -24,10 +34,10 @@ const getCartFromStorage = () => {
 };
 
 // Helper function to save cart to localStorage
-const saveCartToStorage = (cart) => {
+const saveCartToStorage = (storageKey, cart) => {
   try {
-    console.log('Saving cart to localStorage:', cart);
-    localStorage.setItem('cart', JSON.stringify(cart));
+    console.log(`Saving cart to localStorage (${storageKey}):`, cart);
+    localStorage.setItem(storageKey, JSON.stringify(cart));
   } catch (error) {
     console.error('Error saving cart to localStorage:', error);
   }
@@ -35,29 +45,38 @@ const saveCartToStorage = (cart) => {
 
 // Cart provider component
 export const CartProvider = ({ children }) => {
-  // Initialize state with cart from localStorage
-  const [cartItems, setCartItems] = useState(getCartFromStorage());
+  const { currentUser } = useAuth();
+  const activeCartStorageKey = useMemo(() => getCartStorageKey(currentUser), [currentUser]);
+
+  const [cartItems, setCartItems] = useState([]);
   const [cartCount, setCartCount] = useState(0);
   const [cartTotal, setCartTotal] = useState(0);
+  const [hydrated, setHydrated] = useState(false);
 
-  // Load cart from localStorage on initial render
+  // Load cart for current auth identity (guest/user).
   useEffect(() => {
-    console.log('CartProvider mounted, initializing cart from localStorage');
-    const initialCart = getCartFromStorage();
-    if (initialCart.length > 0) {
-      console.log('Setting initial cart items:', initialCart);
-      setCartItems(initialCart);
-    } else {
-      console.log('No cart found in localStorage');
-    }
-  }, []);
+    setHydrated(false);
+    let initialCart = getCartFromStorage(activeCartStorageKey);
 
-  // Update localStorage whenever cart changes
-  useEffect(() => {
-    if (cartItems.length > 0) {
-      console.log('Cart changed, saving to localStorage:', cartItems);
-      saveCartToStorage(cartItems);
+    // Migrate legacy cart key once for a smooth upgrade.
+    if (initialCart.length === 0) {
+      const legacyCart = getCartFromStorage('cart');
+      if (legacyCart.length > 0) {
+        initialCart = legacyCart;
+      }
     }
+
+    setCartItems(initialCart);
+    setHydrated(true);
+  }, [activeCartStorageKey]);
+
+  // Update localStorage whenever cart changes after hydration.
+  useEffect(() => {
+    if (!hydrated) {
+      return;
+    }
+
+    saveCartToStorage(activeCartStorageKey, cartItems);
 
     // Calculate cart count and total
     const itemCount = cartItems.reduce((total, item) => total + item.quantity, 0);
@@ -72,7 +91,7 @@ export const CartProvider = ({ children }) => {
     setCartTotal(total);
 
     console.log('Cart updated - Count:', itemCount, 'Total:', total);
-  }, [cartItems]);
+  }, [cartItems, activeCartStorageKey, hydrated]);
 
   // Add item to cart
   const addToCart = (product) => {
@@ -127,7 +146,7 @@ export const CartProvider = ({ children }) => {
       }
 
       // Immediately save to localStorage for extra safety
-      saveCartToStorage(updatedItems);
+      saveCartToStorage(activeCartStorageKey, updatedItems);
 
       return updatedItems;
     });
@@ -146,7 +165,7 @@ export const CartProvider = ({ children }) => {
       console.log('Items after removal:', newItems);
 
       // Immediately save to localStorage for extra safety
-      saveCartToStorage(newItems);
+      saveCartToStorage(activeCartStorageKey, newItems);
 
       return newItems;
     });
@@ -171,7 +190,7 @@ export const CartProvider = ({ children }) => {
       console.log('Items after quantity update:', updatedItems);
 
       // Immediately save to localStorage for extra safety
-      saveCartToStorage(updatedItems);
+      saveCartToStorage(activeCartStorageKey, updatedItems);
 
       return updatedItems;
     });
@@ -180,7 +199,7 @@ export const CartProvider = ({ children }) => {
   // Clear cart
   const clearCart = () => {
     setCartItems([]);
-    localStorage.removeItem('cart');
+    localStorage.removeItem(activeCartStorageKey);
     console.log('Cart cleared');
   };
 

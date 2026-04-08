@@ -46,11 +46,33 @@ const UserDashboard = () => {
   };
 
   return (
-    <div className="pt-20 pb-10">
-      <div className="container mx-auto px-4">
+    <div className="pt-24 pb-12 bg-gradient-to-b from-purple-50 via-white to-amber-50/30 min-h-screen">
+      <div className="container mx-auto px-4 space-y-6">
+        <div className="rounded-[28px] border border-white bg-white/90 shadow-[0_24px_60px_rgba(15,23,42,0.08)] p-6 md:p-8 flex flex-col md:flex-row md:items-end md:justify-between gap-4">
+          <div>
+            <p className="text-xs uppercase tracking-[0.2em] text-primary-custom font-bold">My Account</p>
+            <h1 className="text-3xl md:text-4xl font-black text-gray-900 mt-2">Welcome back, {currentUser.firstName || 'Partner'}</h1>
+            <p className="text-gray-600 mt-2 max-w-2xl">Keep track of your orders, addresses, and profile settings from one clean space.</p>
+          </div>
+          <div className="grid grid-cols-3 gap-3 w-full md:w-auto">
+            <div className="rounded-2xl border border-purple-100 bg-purple-50 p-3 min-w-[96px]">
+              <p className="text-xs text-gray-500">Orders</p>
+              <p className="text-lg font-bold text-gray-900">{activeTab === 'orders' ? 'Open' : 'All'}</p>
+            </div>
+            <div className="rounded-2xl border border-cyan-100 bg-cyan-50 p-3 min-w-[96px]">
+              <p className="text-xs text-gray-500">Addresses</p>
+              <p className="text-lg font-bold text-gray-900">Saved</p>
+            </div>
+            <div className="rounded-2xl border border-amber-100 bg-amber-50 p-3 min-w-[96px]">
+              <p className="text-xs text-gray-500">Favorites</p>
+              <p className="text-lg font-bold text-gray-900">Quick</p>
+            </div>
+          </div>
+        </div>
+
         <div className="flex flex-col md:flex-row gap-6">
           {/* Sidebar */}
-          <div className="md:w-1/4 bg-white rounded-lg shadow-md p-4">
+          <div className="md:w-1/4 bg-white rounded-[24px] shadow-md p-4 border border-gray-100">
             <div className="flex items-center mb-6 border-b pb-4">
               <div className="w-12 h-12 rounded-full bg-primary-custom/20 flex items-center justify-center text-primary-custom font-bold text-xl">
                 {currentUser.firstName ? currentUser.firstName.charAt(0) : ''}
@@ -143,7 +165,7 @@ const UserDashboard = () => {
           </div>
 
           {/* Main Content */}
-          <div className="md:w-3/4 bg-white rounded-lg shadow-md p-6">
+          <div className="md:w-3/4 bg-white rounded-[24px] shadow-md p-6 border border-gray-100">
             {renderTabContent()}
           </div>
         </div>

@@ -7,9 +7,10 @@ import Products from './components/Products'
 import UserDashboard from './components/user/UserDashboard'
 import AuthModal from './components/auth/AuthModal'
 import WorkLogin from './components/work/WorkLogin'
-import VendorDashboard from './components/work/VendorDashboard'
 import ShopkeeperDashboard from './components/work/ShopkeeperDashboard'
+import ShopkeeperProfile from './components/work/ShopkeeperProfile'
 import DeliveryDashboard from './components/work/DeliveryDashboard'
+import DeliveryProfile from './components/work/DeliveryProfile'
 import WorkerDashboard from './components/work/WorkerDashboard'
 import WorkforceAdminDashboard from './components/admin/WorkforceAdminDashboard'
 import './App.css';
@@ -57,16 +58,20 @@ function App() {
           element: <WorkLogin />
         },
         {
-          path: "work/vendor-dashboard",
-          element: <VendorDashboard />
-        },
-        {
           path: "work/shopkeeper-dashboard",
           element: <ShopkeeperDashboard />
         },
         {
+          path: "work/shopkeeper-profile",
+          element: <ShopkeeperProfile />
+        },
+        {
           path: "work/delivery-dashboard",
           element: <DeliveryDashboard />
+        },
+        {
+          path: "work/delivery-profile",
+          element: <DeliveryProfile />
         },
         {
           path: "work/worker-dashboard",

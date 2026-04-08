@@ -58,7 +58,7 @@ const LoginForm = () => {
   };
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-4">
+    <form onSubmit={handleSubmit} className="space-y-4 rounded-2xl border border-gray-100 bg-white p-4 shadow-sm">
       {error && (
         <div className="bg-red-50 text-red-500 p-3 rounded-md text-sm">
           {error}
@@ -75,8 +75,8 @@ const LoginForm = () => {
             type="tel"
             value={phoneNumber}
             onChange={(e) => setPhoneNumber(e.target.value)}
-            placeholder="Enter Phone Number"
-            className="w-full px-3 py-3 border-0 focus:outline-none text-base"
+            placeholder="10-digit mobile number"
+            className="w-full px-3 py-3 border-0 focus:outline-none text-base bg-transparent"
             required
             maxLength={10}
           />
@@ -94,12 +94,12 @@ const LoginForm = () => {
       </button>
 
       <div className="mt-4 text-center">
-        <p className="text-gray-600">
+        <p className="text-sm text-gray-600">
           New to HomeXpert?
           <button
             type="button"
             onClick={switchAuthMode}
-            className="text-[#8a4af3] font-semibold ml-1 hover:underline"
+            className="text-primary-custom font-semibold ml-1 hover:underline"
           >
             Create an account
           </button>
