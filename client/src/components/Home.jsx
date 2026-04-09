@@ -268,6 +268,25 @@ const Home = () => {
         <div className="border-b border-gray-100 mb-6"></div>
       </div>
 
+      <div className="container mx-auto px-4 mb-8">
+        <div className="rounded-[28px] border border-slate-200 bg-white shadow-sm p-5 md:p-6 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 overflow-hidden relative">
+          <div className="absolute inset-y-0 right-0 w-1/3 bg-gradient-to-l from-cyan-100/40 to-transparent pointer-events-none" />
+          <div className="relative z-10">
+            <p className="text-xs uppercase tracking-[0.2em] text-primary-custom font-bold">Home Services Hub</p>
+            <h2 className="text-2xl font-black text-slate-900 mt-2">Need a home expert as fast as groceries?</h2>
+            <p className="text-sm text-slate-600 mt-2 max-w-2xl">Browse cleaning, AC repair, plumbing, and electrical support in a premium, app-like flow designed for instant booking.</p>
+          </div>
+          <div className="relative z-10 flex flex-wrap gap-3">
+            <Link to="/services" className="rounded-full bg-slate-900 px-5 py-3 text-sm font-semibold text-white hover:bg-slate-800">
+              Explore Services
+            </Link>
+            <Link to="/account?tab=orders" className="rounded-full border border-slate-300 bg-white px-5 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-50">
+              Track Bookings
+            </Link>
+          </div>
+        </div>
+      </div>
+
       <div className="container mx-auto px-4">
         {/* Featured Products - Always show regardless of filter */}
         {activeCategory === 'all' && (

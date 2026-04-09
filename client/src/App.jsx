@@ -4,6 +4,8 @@ import RootLayout from './components/RootLayout'
 import Home from './components/Home'
 import Cart from './components/Cart'
 import Products from './components/Products'
+import HomeServicesHub from './components/HomeServicesHub'
+import ServiceBookingPage from './components/ServiceBookingPage'
 import UserDashboard from './components/user/UserDashboard'
 import AuthModal from './components/auth/AuthModal'
 import WorkLogin from './components/work/WorkLogin'
@@ -48,6 +50,14 @@ function App() {
         {
           path: "products",
           element: <Products />
+        },
+        {
+          path: "services",
+          element: <HomeServicesHub />
+        },
+        {
+          path: "services/book/:serviceSlug",
+          element: <ServiceBookingPage />
         },
         {
           path: "account",

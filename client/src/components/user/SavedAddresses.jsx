@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { toast } from 'react-toastify';
 import { MapContainer, Marker, TileLayer, useMap, useMapEvents } from 'react-leaflet';
@@ -27,6 +27,23 @@ const buildAddressLine = (address) => {
 
 const getCityName = (address) => {
   return address?.city || address?.town || address?.village || address?.county || '';
+};
+
+const getReadableGeolocationError = (error) => {
+  if (!error || typeof error.code !== 'number') {
+    return 'Unable to fetch your current location.';
+  }
+
+  switch (error.code) {
+    case 1:
+      return 'Location permission was denied. Allow location access and try again.';
+    case 2:
+      return 'Location is currently unavailable. Please check GPS/network and retry.';
+    case 3:
+      return 'Location request timed out. Please try again.';
+    default:
+      return 'Unable to fetch your current location.';
+  }
 };
 
 const geocodePlace = async (query) => {
@@ -86,6 +103,7 @@ const SavedAddresses = () => {
   const [searchResults, setSearchResults] = useState([]);
   const [searchingLocation, setSearchingLocation] = useState(false);
   const [resolvingLocation, setResolvingLocation] = useState(false);
+  const [locatingCurrentPosition, setLocatingCurrentPosition] = useState(false);
   const [selectedCoords, setSelectedCoords] = useState(DEFAULT_CENTER);
   const [mapCenter, setMapCenter] = useState(DEFAULT_CENTER);
   const [formData, setFormData] = useState({
@@ -188,6 +206,37 @@ const SavedAddresses = () => {
     } catch (error) {
       toast.error(error.message || 'Could not fetch place details from map pin.');
     } finally {
+      setResolvingLocation(false);
+    }
+  };
+
+  const handleUseCurrentLocation = async () => {
+    if (!navigator.geolocation) {
+      toast.error('Geolocation is not supported in this browser.');
+      return;
+    }
+
+    try {
+      setLocatingCurrentPosition(true);
+      setResolvingLocation(true);
+      setSearchResults([]);
+
+      const position = await new Promise((resolve, reject) => {
+        navigator.geolocation.getCurrentPosition(resolve, reject, {
+          enableHighAccuracy: true,
+          timeout: 12000,
+          maximumAge: 0,
+        });
+      });
+
+      const { latitude, longitude } = position.coords;
+      const resolved = await reverseGeocode(latitude, longitude);
+      applyLocationData(resolved, latitude, longitude);
+      toast.success('Current location added to address form.');
+    } catch (error) {
+      toast.error(getReadableGeolocationError(error));
+    } finally {
+      setLocatingCurrentPosition(false);
       setResolvingLocation(false);
     }
   };
@@ -402,13 +451,24 @@ const SavedAddresses = () => {
                 placeholder="Search area, society, landmark"
                 className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-cyan-300"
               />
-              <button
-                type="button"
-                onClick={handleLocationSearch}
-                className="rounded-lg bg-cyan-600 px-4 py-2 text-sm font-semibold text-white hover:bg-cyan-500"
-              >
-                {searchingLocation ? 'Searching...' : 'Search'}
-              </button>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={handleLocationSearch}
+                  disabled={searchingLocation || locatingCurrentPosition}
+                  className="rounded-lg bg-cyan-600 px-4 py-2 text-sm font-semibold text-white hover:bg-cyan-500 disabled:cursor-not-allowed disabled:bg-cyan-300"
+                >
+                  {searchingLocation ? 'Searching...' : 'Search'}
+                </button>
+                <button
+                  type="button"
+                  onClick={handleUseCurrentLocation}
+                  disabled={locatingCurrentPosition || searchingLocation}
+                  className="rounded-lg border border-cyan-300 bg-cyan-50 px-4 py-2 text-sm font-semibold text-cyan-800 hover:bg-cyan-100 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {locatingCurrentPosition ? 'Locating...' : 'Use Current Location'}
+                </button>
+              </div>
             </div>
 
             {searchResults.length > 0 ? (
@@ -457,6 +517,9 @@ const SavedAddresses = () => {
               {formData.city || formData.state || formData.pincode ? (
                 <p className="mt-1 text-emerald-800">{formData.city}, {formData.state} - {formData.pincode}</p>
               ) : null}
+              <p className="mt-1 text-xs text-emerald-700">
+                Pin: {selectedCoords.lat.toFixed(5)}, {selectedCoords.lng.toFixed(5)}
+              </p>
               <p className="mt-2 text-xs text-emerald-700">You can edit city, state and pincode manually if auto-detection is incomplete.</p>
             </div>
 

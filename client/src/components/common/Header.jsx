@@ -37,21 +37,44 @@ function Header() {
     worker: '/work/worker-dashboard',
   };
 
+  const workforceBranding = {
+    shopkeeper: {
+      roleLabel: 'Shopkeeper Partner',
+      tagline: 'Driving local neighborhood commerce',
+    },
+    delivery: {
+      roleLabel: 'Delivery Partner',
+      tagline: 'Fast and reliable doorstep fulfillment',
+    },
+    worker: {
+      roleLabel: 'Service Professional',
+      tagline: 'Trusted on-demand home expertise',
+    },
+  };
+
   const activeAccount = useMemo(() => {
     if (currentUser) {
       return {
         label: currentUser.firstName || 'Account',
         accountPath: '/account',
         isWorkforce: false,
+        roleLabel: currentUser.role === 'admin' ? 'Admin Experience Manager' : 'HomeXpert Prime Customer',
+        tagline: 'Smart shopping, seamless doorstep convenience',
       };
     }
 
     if (workforceAuth?.profile) {
-      const roleLabel = workforceAuth.role ? workforceAuth.role.charAt(0).toUpperCase() + workforceAuth.role.slice(1) : 'Work';
+      const roleConfig = workforceBranding[workforceAuth.role] || {
+        roleLabel: 'Workforce Partner',
+        tagline: 'Powering trusted services at scale',
+      };
+
       return {
-        label: `${workforceAuth.profile.firstName || 'Partner'} (${roleLabel})`,
+        label: workforceAuth.profile.firstName || 'Partner',
         accountPath: workforceRouteByRole[workforceAuth.role] || '/work/login',
         isWorkforce: true,
+        roleLabel: roleConfig.roleLabel,
+        tagline: roleConfig.tagline,
       };
     }
 
@@ -91,18 +114,47 @@ function Header() {
     return (
       <Link
         to={account.accountPath}
-        className="inline-flex items-center gap-2 rounded-full border border-primary-custom/15 bg-gradient-to-r from-purple-50 to-white px-4 py-2 text-sm font-semibold text-primary-custom transition-all duration-300 hover:-translate-y-0.5 hover:shadow-md"
+        className="inline-flex items-center gap-2 rounded-2xl border border-primary-custom/15 bg-gradient-to-r from-purple-50 to-white px-3 py-2 text-sm font-semibold text-primary-custom transition-all duration-300 hover:-translate-y-0.5 hover:shadow-md"
       >
         <span className="flex h-8 w-8 items-center justify-center rounded-full bg-primary-custom text-white text-xs font-bold">
           {(account.label || 'A').charAt(0)}
         </span>
-        <span className="max-w-[180px] truncate">{account.label}</span>
+        <span className="max-w-[220px] min-w-0 leading-tight">
+          <span className="block truncate text-sm text-primary-custom">{account.label}</span>
+          <span className="block truncate text-[11px] font-semibold text-primary-custom/75">{account.roleLabel}</span>
+        </span>
+      </Link>
+    );
+  };
+
+  const renderRoleCta = (account) => {
+    if (!account) {
+      return null;
+    }
+
+    if (account.isWorkforce) {
+      return (
+        <Link
+          to={account.accountPath}
+          className="inline-flex items-center rounded-full bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition-all duration-300 hover:bg-slate-800 hover:-translate-y-0.5"
+        >
+          Open {account.roleLabel}
+        </Link>
+      );
+    }
+
+    return (
+      <Link
+        to="/services"
+        className="inline-flex items-center rounded-full bg-primary-custom px-4 py-2 text-sm font-semibold text-white transition-all duration-300 hover:opacity-90 hover:-translate-y-0.5"
+      >
+        Home Services
       </Link>
     );
   };
   return (
     <div className="w-full">
-      <nav className="fixed top-0 left-0 right-0 z-50 border-b border-white/70 bg-white/95 backdrop-blur-md shadow-[0px_12px_30px_-18px_rgba(138,74,243,0.55)] p-2 flex justify-between items-center">
+      <nav className="fixed top-0 left-0 right-0 z-[1200] border-b border-white/70 bg-white/95 backdrop-blur-md shadow-[0px_12px_30px_-18px_rgba(138,74,243,0.55)] p-2 flex justify-between items-center">
 
         <Link
           to="/"
@@ -121,8 +173,8 @@ function Header() {
           {showConsumerActions ? (
             <SearchBar />
           ) : (
-            <div className="hidden md:flex items-center px-4 py-2 rounded-full bg-purple-50 border border-purple-100 text-primary-custom font-semibold text-sm">
-              {isAdminPath ? 'Private Admin Console' : 'Workforce Portal'}
+            <div className="hidden md:flex items-center px-4 py-2 rounded-full bg-slate-50 border border-slate-200 text-slate-600 font-semibold text-sm">
+              HomeXpert Professional Suite
             </div>
           )}
         </div>
@@ -165,6 +217,7 @@ function Header() {
               {activeAccount ? (
                 <div className="flex items-center space-x-3">
                   {renderAccountChip(activeAccount)}
+                  {renderRoleCta(activeAccount)}
                   {activeAccount.isWorkforce ? (
                     <button
                       onClick={handleUnifiedLogout}
@@ -251,12 +304,13 @@ function Header() {
 
       {/* Mobile menu */}
       {mobileMenuOpen && (
-        <div className="lg:hidden fixed top-[56px] inset-x-0 z-40 bg-white shadow-md py-3 px-4">
+        <div className="lg:hidden fixed top-[56px] inset-x-0 z-[1190] bg-white shadow-md py-3 px-4">
           <ul className="flex flex-col space-y-4" style={{ fontFamily: 'Gilroy, Arial, Helvetica Neue, sans-serif' }}>
             <li className="text-cement font-[600] flex items-center space-x-1 cursor-pointer">
               {activeAccount ? (
                 <div className="flex flex-col space-y-3">
                   <div onClick={() => setMobileMenuOpen(false)}>{renderAccountChip(activeAccount)}</div>
+                  <div onClick={() => setMobileMenuOpen(false)}>{renderRoleCta(activeAccount)}</div>
                   {activeAccount.isWorkforce ? (
                     <button
                       onClick={() => {

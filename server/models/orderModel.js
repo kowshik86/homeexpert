@@ -78,6 +78,44 @@ const deliveryAddressSchema = new mongoose.Schema({
   }
 });
 
+const serviceBookingSchema = new mongoose.Schema({
+  serviceSlug: {
+    type: String,
+    trim: true,
+  },
+  serviceName: {
+    type: String,
+    trim: true,
+  },
+  packageName: {
+    type: String,
+    trim: true,
+  },
+  serviceImage: {
+    type: String,
+    trim: true,
+  },
+  scheduledFor: {
+    type: Date,
+  },
+  timeSlot: {
+    type: String,
+    trim: true,
+  },
+  notes: {
+    type: String,
+    trim: true,
+  },
+  estimatedDurationMins: {
+    type: Number,
+    min: 0,
+  },
+  estimatedPrice: {
+    type: Number,
+    min: 0,
+  },
+}, { _id: false });
+
 // Define the schema for orders
 const orderSchema = new mongoose.Schema({
   userId: {
@@ -85,8 +123,14 @@ const orderSchema = new mongoose.Schema({
     ref: 'user',
     required: true
   },
+  bookingType: {
+    type: String,
+    enum: ['product', 'service'],
+    default: 'product',
+  },
   orderItems: [orderItemSchema],
   deliveryAddress: deliveryAddressSchema,
+  serviceBooking: serviceBookingSchema,
   paymentMethod: {
     type: String,
     enum: ['COD', 'ONLINE', 'WALLET'],
@@ -105,6 +149,10 @@ const orderSchema = new mongoose.Schema({
   deliveryPersonId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'deliveryperson'
+  },
+  assignedWorkerId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'worker'
   },
   subtotal: {
     type: Number,

@@ -1,17 +1,42 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../../context/AuthContext';
-import { Link, useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import UserProfile from './UserProfile';
 import OrderHistory from './OrderHistory';
 import SavedAddresses from './SavedAddresses';
 import Favorites from './Favorites';
 import { toast } from 'react-toastify';
 
+const ACTIVE_ORDER_STATUSES = ['PLACED', 'CONFIRMED', 'PREPARING', 'OUT_FOR_DELIVERY'];
+
+const formatOrderStatus = (status) => {
+  return (status || 'PLACED')
+    .toLowerCase()
+    .split('_')
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ');
+};
+
+const getStatusBadgeClass = (status) => {
+  switch (status) {
+    case 'OUT_FOR_DELIVERY':
+      return 'bg-cyan-100 text-cyan-800 border-cyan-200';
+    case 'PREPARING':
+      return 'bg-amber-100 text-amber-800 border-amber-200';
+    case 'CONFIRMED':
+      return 'bg-indigo-100 text-indigo-800 border-indigo-200';
+    default:
+      return 'bg-emerald-100 text-emerald-800 border-emerald-200';
+  }
+};
+
 const UserDashboard = () => {
   const { currentUser, logout } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const [activeTab, setActiveTab] = useState('profile');
-  const [isLoading, setIsLoading] = useState(false);
+  const [activeOrder, setActiveOrder] = useState(null);
+  const [loadingActiveOrder, setLoadingActiveOrder] = useState(true);
 
   useEffect(() => {
     // Redirect to home if not logged in
@@ -19,6 +44,64 @@ const UserDashboard = () => {
       navigate('/');
     }
   }, [currentUser, navigate]);
+
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const tab = params.get('tab');
+    const allowedTabs = ['profile', 'orders', 'addresses', 'favorites'];
+
+    if (tab && allowedTabs.includes(tab)) {
+      setActiveTab(tab);
+    }
+  }, [location.search]);
+
+  useEffect(() => {
+    const fetchActiveOrder = async (showLoader = false) => {
+      if (!currentUser?._id) {
+        setLoadingActiveOrder(false);
+        setActiveOrder(null);
+        return;
+      }
+
+      if (showLoader) {
+        setLoadingActiveOrder(true);
+      }
+
+      try {
+        const response = await fetch(`http://localhost:3000/order-api/orders/${currentUser._id}`);
+        if (!response.ok) {
+          throw new Error('Failed to fetch orders');
+        }
+
+        const data = await response.json();
+        const allOrders = Array.isArray(data.payload) ? data.payload : [];
+        const firstActive = allOrders.find((order) => ACTIVE_ORDER_STATUSES.includes(order.orderStatus));
+        setActiveOrder(firstActive || null);
+      } catch (error) {
+        console.error('Error loading active order:', error);
+      } finally {
+        if (showLoader) {
+          setLoadingActiveOrder(false);
+        }
+      }
+    };
+
+    fetchActiveOrder(true);
+
+    const polling = setInterval(() => {
+      fetchActiveOrder(false);
+    }, 20000);
+
+    return () => clearInterval(polling);
+  }, [currentUser]);
+
+  const orderSummaryLabel = useMemo(() => {
+    if (!activeOrder) {
+      return 'No active orders right now';
+    }
+
+    return `Order #${activeOrder._id.substring(0, 8)} is ${formatOrderStatus(activeOrder.orderStatus)}`;
+  }, [activeOrder]);
 
   const handleLogout = () => {
     logout();
@@ -68,6 +151,33 @@ const UserDashboard = () => {
               <p className="text-lg font-bold text-gray-900">Quick</p>
             </div>
           </div>
+        </div>
+
+        <div className="rounded-2xl border border-cyan-100 bg-gradient-to-r from-cyan-50 via-white to-emerald-50 p-4 md:p-5 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+          <div>
+            <p className="text-xs uppercase tracking-[0.18em] text-cyan-700 font-bold">Current Active Order</p>
+            {loadingActiveOrder ? (
+              <p className="text-sm text-gray-600 mt-2">Checking your latest order status...</p>
+            ) : (
+              <>
+                <p className="text-base font-semibold text-gray-900 mt-2">{orderSummaryLabel}</p>
+                {activeOrder ? (
+                  <span className={`mt-2 inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-semibold ${getStatusBadgeClass(activeOrder.orderStatus)}`}>
+                    {formatOrderStatus(activeOrder.orderStatus)}
+                  </span>
+                ) : (
+                  <p className="text-sm text-gray-600 mt-1">Place a new order and track every stage here instantly.</p>
+                )}
+              </>
+            )}
+          </div>
+
+          <button
+            onClick={() => setActiveTab('orders')}
+            className="inline-flex items-center justify-center rounded-lg bg-primary-custom px-4 py-2 text-sm font-semibold text-white hover:bg-opacity-90"
+          >
+            View Orders
+          </button>
         </div>
 
         <div className="flex flex-col md:flex-row gap-6">

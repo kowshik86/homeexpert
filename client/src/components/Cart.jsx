@@ -109,7 +109,7 @@ const Cart = () => {
       await createOrder(payload);
       clearCart();
       toast.success('Order placed successfully. Delivery partner has been notified.');
-      navigate('/account');
+      navigate('/account?tab=orders');
     } catch (error) {
       toast.error(error.message || 'Failed to place your order. Please try again.');
     } finally {

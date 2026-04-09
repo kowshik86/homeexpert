@@ -2,10 +2,39 @@ const express = require('express');
 const orderApp = express.Router();
 const orderModel = require('../models/orderModel');
 const userModel = require('../models/userModel');
+const workerModel = require('../models/workerModel');
 const expressAsyncHandler = require('express-async-handler');
 const mongoose = require('mongoose');
 
 const ACTIVE_DELIVERY_STATUSES = ['PLACED', 'CONFIRMED', 'PREPARING', 'OUT_FOR_DELIVERY'];
+const CANCELLABLE_STATUSES = ['PLACED', 'CONFIRMED', 'PREPARING'];
+const SERVICE_MATCHING_KEYWORDS = {
+  cleaning: ['cleaning', 'home cleaning', 'deep cleaning', 'sofa cleaning'],
+  appliance: ['appliance', 'ac', 'fridge', 'washing machine', 'repair'],
+  plumbing: ['plumbing', 'pipe', 'tap', 'bathroom'],
+  electrical: ['electrical', 'electric', 'wiring', 'switchboard', 'fan'],
+};
+
+const normalizeText = (value) => String(value || '').toLowerCase();
+
+const getServiceTerms = (serviceBooking = {}) => {
+  const slug = normalizeText(serviceBooking.serviceSlug);
+  const serviceName = normalizeText(serviceBooking.serviceName);
+  const mappedTerms = SERVICE_MATCHING_KEYWORDS[slug] || [];
+  return Array.from(new Set([slug, serviceName, ...mappedTerms].filter(Boolean)));
+};
+
+const matchWorkerForBooking = async (serviceBooking = {}) => {
+  const terms = getServiceTerms(serviceBooking);
+  const workers = await workerModel.find({ isAvailable: true });
+
+  const matchedWorker = workers.find((worker) => {
+    const workerWorkTypes = Array.isArray(worker.workTypes) ? worker.workTypes.map(normalizeText) : [];
+    return workerWorkTypes.some((workType) => terms.some((term) => workType.includes(term) || term.includes(workType)));
+  });
+
+  return matchedWorker || workers[0] || null;
+};
 
 // Create a new order
 orderApp.post('/order', expressAsyncHandler(async (req, res) => {
@@ -16,6 +45,24 @@ orderApp.post('/order', expressAsyncHandler(async (req, res) => {
     const user = await userModel.findById(orderData.userId);
     if (!user) {
       return res.status(404).send({ message: "User not found" });
+    }
+
+    if (orderData.bookingType === 'service') {
+      if (!orderData.serviceBooking?.serviceName || !orderData.serviceBooking?.scheduledFor) {
+        return res.status(400).send({ message: 'Service booking details are required' });
+      }
+
+      const matchedWorker = await matchWorkerForBooking(orderData.serviceBooking);
+      if (matchedWorker) {
+        orderData.assignedWorkerId = matchedWorker._id;
+      }
+
+      orderData.orderItems = [];
+      orderData.subtotal = Number(orderData.serviceBooking.estimatedPrice || orderData.subtotal || 0);
+      orderData.totalAmount = Number(orderData.serviceBooking.estimatedPrice || orderData.totalAmount || 0);
+      orderData.deliveryFee = 0;
+      orderData.discount = 0;
+      orderData.paymentStatus = orderData.paymentStatus || 'PENDING';
     }
     
     // Create new order
@@ -54,6 +101,32 @@ orderApp.get('/orders/:userId', expressAsyncHandler(async (req, res) => {
   }
 }));
 
+// Get all service bookings assigned to a worker
+orderApp.get('/worker/bookings/:workerId', expressAsyncHandler(async (req, res) => {
+  try {
+    const { workerId } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(workerId)) {
+      return res.status(400).send({ message: 'Invalid workerId' });
+    }
+
+    const bookings = await orderModel.find({
+      bookingType: 'service',
+      assignedWorkerId: workerId,
+    }).sort({ createdAt: -1 });
+
+    res.status(200).send({
+      message: 'Worker bookings fetched successfully',
+      payload: bookings,
+    });
+  } catch (error) {
+    res.status(500).send({
+      message: 'Failed to fetch worker bookings',
+      error: error.message,
+    });
+  }
+}));
+
 // Get a specific order by ID
 orderApp.get('/order/:orderId', expressAsyncHandler(async (req, res) => {
   try {
@@ -82,7 +155,7 @@ orderApp.get('/order/:orderId', expressAsyncHandler(async (req, res) => {
 orderApp.patch('/order/:orderId/status', expressAsyncHandler(async (req, res) => {
   try {
     const orderId = req.params.orderId;
-    const { orderStatus, deliveryPersonId } = req.body;
+    const { orderStatus, deliveryPersonId, workerId } = req.body;
 
     const updatePayload = {
       orderStatus,
@@ -95,6 +168,13 @@ orderApp.patch('/order/:orderId/status', expressAsyncHandler(async (req, res) =>
         return res.status(400).send({ message: 'Invalid deliveryPersonId' });
       }
       updatePayload.deliveryPersonId = deliveryPersonId;
+    }
+
+    if (workerId) {
+      if (!mongoose.Types.ObjectId.isValid(workerId)) {
+        return res.status(400).send({ message: 'Invalid workerId' });
+      }
+      updatePayload.assignedWorkerId = workerId;
     }
     
     // Find and update the order
@@ -189,6 +269,75 @@ orderApp.patch('/delivery/order/:orderId/assign', expressAsyncHandler(async (req
   }
 }));
 
+// Update worker booking status directly
+orderApp.patch('/worker/order/:orderId/status', expressAsyncHandler(async (req, res) => {
+  try {
+    const { orderId } = req.params;
+    const { orderStatus, workerId } = req.body;
+
+    if (!orderStatus) {
+      return res.status(400).send({ message: 'orderStatus is required' });
+    }
+
+    if (workerId && !mongoose.Types.ObjectId.isValid(workerId)) {
+      return res.status(400).send({ message: 'Invalid workerId' });
+    }
+
+    const updatePayload = {
+      orderStatus,
+      ...(workerId ? { assignedWorkerId: workerId } : {}),
+      ...(orderStatus === 'DELIVERED' ? { deliveredAt: new Date() } : {}),
+      ...(orderStatus === 'CANCELLED' ? { cancelledAt: new Date(), cancelReason: req.body.cancelReason } : {}),
+    };
+
+    const updatedOrder = await orderModel.findByIdAndUpdate(orderId, updatePayload, { new: true });
+
+    if (!updatedOrder) {
+      return res.status(404).send({ message: 'Order not found' });
+    }
+
+    res.status(200).send({
+      message: 'Worker booking status updated successfully',
+      payload: updatedOrder,
+    });
+  } catch (error) {
+    res.status(500).send({
+      message: 'Failed to update worker booking status',
+      error: error.message,
+    });
+  }
+}));
+
+// Release a worker lead back to the unassigned pool
+orderApp.patch('/worker/order/:orderId/release', expressAsyncHandler(async (req, res) => {
+  try {
+    const { orderId } = req.params;
+
+    const updatedOrder = await orderModel.findByIdAndUpdate(
+      orderId,
+      {
+        $unset: { assignedWorkerId: 1 },
+        orderStatus: 'PLACED',
+      },
+      { new: true },
+    );
+
+    if (!updatedOrder) {
+      return res.status(404).send({ message: 'Order not found' });
+    }
+
+    res.status(200).send({
+      message: 'Worker lead released successfully',
+      payload: updatedOrder,
+    });
+  } catch (error) {
+    res.status(500).send({
+      message: 'Failed to release worker lead',
+      error: error.message,
+    });
+  }
+}));
+
 // Add rating and feedback to an order
 orderApp.patch('/order/:orderId/feedback', expressAsyncHandler(async (req, res) => {
   try {
@@ -214,6 +363,40 @@ orderApp.patch('/order/:orderId/feedback', expressAsyncHandler(async (req, res) 
     res.status(500).send({ 
       message: "Failed to add feedback", 
       error: error.message 
+    });
+  }
+}));
+
+// Cancel an order (allowed only before out-for-delivery)
+orderApp.patch('/order/:orderId/cancel', expressAsyncHandler(async (req, res) => {
+  try {
+    const orderId = req.params.orderId;
+    const cancelReason = (req.body?.cancelReason || '').trim() || 'Cancelled by user';
+
+    const order = await orderModel.findById(orderId);
+    if (!order) {
+      return res.status(404).send({ message: 'Order not found' });
+    }
+
+    if (!CANCELLABLE_STATUSES.includes(order.orderStatus)) {
+      return res.status(400).send({
+        message: `Order cannot be cancelled at ${order.orderStatus.replace(/_/g, ' ')} stage`,
+      });
+    }
+
+    order.orderStatus = 'CANCELLED';
+    order.cancelledAt = new Date();
+    order.cancelReason = cancelReason;
+    await order.save();
+
+    res.status(200).send({
+      message: 'Order cancelled successfully',
+      payload: order,
+    });
+  } catch (error) {
+    res.status(500).send({
+      message: 'Failed to cancel order',
+      error: error.message,
     });
   }
 }));

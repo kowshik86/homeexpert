@@ -283,3 +283,39 @@ export const createOrder = async (payload) => {
     throw error;
   }
 };
+
+// Fetch worker service bookings
+export const fetchWorkerBookings = async (workerId) => {
+  try {
+    if (!workerId) {
+      return [];
+    }
+
+    const response = await fetch(`${API_BASE_URL}/order-api/worker/bookings/${workerId}`);
+    return await handleApiResponse(response, 'Failed to fetch worker bookings');
+  } catch (error) {
+    console.error('Error fetching worker bookings:', error);
+    return [];
+  }
+};
+
+// Create a service booking
+export const createServiceBooking = async (payload) => {
+  try {
+    const response = await fetch(`${API_BASE_URL}/order-api/order`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        ...payload,
+        bookingType: 'service',
+      }),
+    });
+
+    return await handleApiResponse(response, 'Failed to create service booking');
+  } catch (error) {
+    console.error('Error creating service booking:', error);
+    throw error;
+  }
+};
