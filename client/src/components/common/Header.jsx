@@ -11,10 +11,15 @@ function Header() {
   const [workforceAuth, setWorkforceAuth] = useState(null);
   const location = useLocation();
   const navigate = useNavigate();
+  const currentTab = new URLSearchParams(location.search).get('tab');
 
+  const isHomePath = location.pathname === '/';
+  const isServicesPath = location.pathname.startsWith('/services');
+  const isAccountOrdersPath = location.pathname === '/account' && currentTab === 'orders';
   const isAdminPath = location.pathname.startsWith('/private/workforce-admin-dashboard');
   const isWorkPath = location.pathname.startsWith('/work/');
   const showConsumerActions = !isAdminPath && !isWorkPath;
+  const showSearch = showConsumerActions && !isHomePath;
 
   useEffect(() => {
     const workforceState = localStorage.getItem('workforceAuth');
@@ -81,7 +86,10 @@ function Header() {
     return null;
   }, [currentUser, workforceAuth]);
 
-  const showCartLink = showConsumerActions && (!activeAccount || !activeAccount.isWorkforce);
+  const showWorkLinkOnHome = isHomePath && !activeAccount;
+
+  const showCartLink = showConsumerActions && !isHomePath && !isServicesPath && !isAccountOrdersPath && (!activeAccount || !activeAccount.isWorkforce);
+  const showOrdersLink = showConsumerActions && (isServicesPath || isAccountOrdersPath) && (!activeAccount || !activeAccount.isWorkforce);
   const showWorkAtHomeXpertLink = showConsumerActions && !activeAccount;
 
   const handleUnifiedLogout = () => {
@@ -154,7 +162,7 @@ function Header() {
   };
   return (
     <div className="w-full">
-      <nav className="fixed top-0 left-0 right-0 z-[1200] border-b border-white/70 bg-white/95 backdrop-blur-md shadow-[0px_12px_30px_-18px_rgba(138,74,243,0.55)] p-2 flex justify-between items-center">
+      <nav className="fixed top-0 left-0 right-0 z-[1200] h-16 border-b border-white/70 bg-white/95 backdrop-blur-md shadow-[0px_12px_30px_-18px_rgba(138,74,243,0.55)] px-3 flex justify-between items-center">
 
         <Link
           to="/"
@@ -170,13 +178,9 @@ function Header() {
         </Link>
 
         <div className="flex flex-grow justify-center space-x-8 ml-8">
-          {showConsumerActions ? (
+          {showSearch ? (
             <SearchBar />
-          ) : (
-            <div className="hidden md:flex items-center px-4 py-2 rounded-full bg-slate-50 border border-slate-200 text-slate-600 font-semibold text-sm">
-              HomeXpert Professional Suite
-            </div>
-          )}
+          ) : null}
         </div>
 
         {/* Mobile menu button */}
@@ -266,7 +270,26 @@ function Header() {
                 )
               )}
             </li>
-            {showCartLink ? (
+            {showWorkLinkOnHome ? (
+              <li className="text-cement font-bold flex items-center space-x-2 cursor-pointer">
+                <Link to="/work/login" className="text-primary-custom transition-all duration-300 hover:text-primary-custom hover:scale-105 nav-link font-bold">
+                  Work at HomeXpert
+                </Link>
+              </li>
+            ) : showOrdersLink ? (
+              <li className="text-cement font-[600] flex items-center space-x-1 cursor-pointer">
+                <Link to="/account?tab=orders" className="text-primary-custom cursor-pointer flex items-center transition-all duration-300 hover:text-primary-custom hover:scale-105 nav-link">
+                  <div className="relative flex items-center">
+                    <div className="relative">
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" />
+                      </svg>
+                    </div>
+                    <span className="ml-2">Orders</span>
+                  </div>
+                </Link>
+              </li>
+            ) : showCartLink ? (
               <>
                 <li className="text-cement font-[600] flex items-center space-x-1 cursor-pointer">
                   <Link to="/cart" className="text-primary-custom cursor-pointer flex items-center transition-all duration-300 hover:text-primary-custom hover:scale-105 nav-link">
@@ -304,7 +327,7 @@ function Header() {
 
       {/* Mobile menu */}
       {mobileMenuOpen && (
-        <div className="lg:hidden fixed top-[56px] inset-x-0 z-[1190] bg-white shadow-md py-3 px-4">
+        <div className="lg:hidden fixed top-[64px] inset-x-0 z-[1190] bg-white shadow-md py-3 px-4">
           <ul className="flex flex-col space-y-4" style={{ fontFamily: 'Gilroy, Arial, Helvetica Neue, sans-serif' }}>
             <li className="text-cement font-[600] flex items-center space-x-1 cursor-pointer">
               {activeAccount ? (
@@ -364,7 +387,26 @@ function Header() {
                 )
               )}
             </li>
-            {showCartLink ? (
+            {showWorkLinkOnHome ? (
+              <li className="text-cement font-bold flex items-center space-x-2 cursor-pointer">
+                <Link to="/work/login" onClick={() => setMobileMenuOpen(false)} className="text-primary-custom transition-all duration-300 hover:text-primary-custom hover:scale-105 nav-link font-bold">
+                  Work at HomeXpert
+                </Link>
+              </li>
+            ) : showOrdersLink ? (
+              <li className="text-cement font-[600] flex items-center space-x-1 cursor-pointer">
+                <Link to="/account?tab=orders" onClick={() => setMobileMenuOpen(false)} className="text-primary-custom cursor-pointer flex items-center transition-all duration-300 hover:text-primary-custom hover:scale-105 nav-link">
+                  <div className="relative flex items-center">
+                    <div className="relative">
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" />
+                      </svg>
+                    </div>
+                    <span className="ml-2">Orders</span>
+                  </div>
+                </Link>
+              </li>
+            ) : showCartLink ? (
               <>
                 <li className="text-cement font-[600] flex items-center space-x-1 cursor-pointer">
                   <Link to="/cart" onClick={() => setMobileMenuOpen(false)} className="text-primary-custom cursor-pointer flex items-center transition-all duration-300 hover:text-primary-custom hover:scale-105 nav-link">

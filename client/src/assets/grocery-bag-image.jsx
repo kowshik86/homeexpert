@@ -1,45 +1,66 @@
 import React from 'react';
 
+const GROCERY_IMAGE = 'https://images.unsplash.com/photo-1542838132-92c53300491e?auto=format&fit=crop&w=900&q=80';
+const SERVICE_IMAGE = 'https://images.unsplash.com/photo-1621905251918-48416bd8575a?auto=format&fit=crop&w=900&q=80';
+const FALLBACK_IMAGE = 'https://images.unsplash.com/photo-1472851294608-062f824d29cc?auto=format&fit=crop&w=900&q=80';
+
 const GroceryBagImage = () => {
+  const handleImageError = (event) => {
+    event.currentTarget.onerror = null;
+    event.currentTarget.src = FALLBACK_IMAGE;
+  };
+
   return (
-    <div className="relative w-full h-full flex flex-col items-center">
-      <div className="bg-[#f8f0ff] w-full h-full rounded-lg flex flex-col items-center justify-center">
-        <div className="relative w-3/4">
-          {/* Shopping Bag */}
-          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 240" className="w-full">
-            {/* Bag */}
-            <path d="M40,60 L160,60 L180,220 L20,220 Z" fill="#8a4af3" stroke="#8a4af3" strokeWidth="4"/>
-            <path d="M50,60 L150,60 L165,210 L35,210 Z" fill="white"/>
+    <div className="relative w-full h-full flex items-center justify-center">
+      <div className="relative w-full h-full overflow-hidden rounded-[24px] border border-white/20 bg-[radial-gradient(circle_at_18%_0%,rgba(255,255,255,0.24),transparent_34%),linear-gradient(152deg,#1f1142_0%,#4c1d95_52%,#7c3aed_100%)] p-4 shadow-[0_28px_80px_-34px_rgba(16,4,38,0.9)]">
+        <div className="auth-illus-grid absolute inset-0 opacity-20" />
+        <div className="pointer-events-none absolute -top-12 -right-10 h-32 w-32 rounded-full bg-fuchsia-300/30 blur-3xl auth-illus-float" />
+        <div className="pointer-events-none absolute -bottom-12 -left-10 h-36 w-36 rounded-full bg-cyan-300/30 blur-3xl auth-illus-drift" />
 
-            {/* Bag Handles */}
-            <path d="M50,60 Q50,20 100,20 Q150,20 150,60" fill="none" stroke="#8a4af3" strokeWidth="8" strokeLinecap="round"/>
+        <div className="relative mx-auto mt-2 w-full max-w-[302px] rounded-[28px] border border-white/30 bg-white/12 p-3 backdrop-blur-xl shadow-[0_18px_60px_-26px_rgba(7,3,28,0.95)]">
+          <div className="relative overflow-hidden rounded-[20px] border border-white/45 shadow-2xl">
+            <div className="grid grid-cols-2">
+              <img
+                src={GROCERY_IMAGE}
+                alt="Fresh groceries"
+                className="h-48 w-full object-cover"
+                loading="lazy"
+                onError={handleImageError}
+              />
+              <img
+                src={SERVICE_IMAGE}
+                alt="Home services"
+                className="h-48 w-full object-cover"
+                loading="lazy"
+                onError={handleImageError}
+              />
+            </div>
 
-            {/* Grocery Items */}
-            {/* Red Circle (Tomato) */}
-            <circle cx="80" cy="90" r="20" fill="#ff5252"/>
+            <div className="absolute inset-y-0 left-1/2 w-px bg-white/55" />
+            <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,transparent_40%,rgba(2,6,23,0.32)_100%)]" />
+            <div className="auth-illus-sheen absolute -left-20 top-0 h-full w-16 rotate-[14deg] bg-gradient-to-r from-transparent via-white/35 to-transparent" />
+          </div>
 
-            {/* Yellow Circle (Lemon) */}
-            <circle cx="120" cy="90" r="20" fill="#ffeb3b"/>
-
-            {/* Green Oval (Cucumber) */}
-            <ellipse cx="100" cy="130" rx="30" ry="15" fill="#4caf50"/>
-
-            {/* Red Circle (Tomato) */}
-            <circle cx="120" cy="170" r="15" fill="#f44336"/>
-
-            {/* Shopping List */}
-            <rect x="170" y="100" width="30" height="70" rx="5" ry="5" fill="white" stroke="#8a4af3" strokeWidth="2"/>
-            <line x1="175" y1="115" x2="195" y2="115" stroke="#8a4af3" strokeWidth="1"/>
-            <line x1="175" y1="130" x2="195" y2="130" stroke="#8a4af3" strokeWidth="1"/>
-            <line x1="175" y1="145" x2="195" y2="145" stroke="#8a4af3" strokeWidth="1"/>
-            <line x1="175" y1="160" x2="195" y2="160" stroke="#8a4af3" strokeWidth="1"/>
-          </svg>
+          <div className="mt-3 flex items-center justify-between px-1">
+            <div className="flex items-center gap-2">
+              <span className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-white/45 bg-white/20 text-white">
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 3h2l.4 2M7 13h10l4-8H5.4" />
+                </svg>
+              </span>
+              <span className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-white/45 bg-white/20 text-white">
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.7 6.3a1 1 0 010 1.4l-8 8a1 1 0 01-1.4-1.4l8-8a1 1 0 011.4 0z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7l1-1a2.12 2.12 0 113 3l-1 1m-3-3l3 3m-5 5l3 3m-3-3l-1 1a2.12 2.12 0 11-3-3l1-1" />
+                </svg>
+              </span>
+            </div>
+            <div className="h-1 w-16 rounded-full bg-white/60" />
+          </div>
         </div>
 
-        {/* Text added as HTML for better rendering */}
-        <div className="mt-4 text-center">
-          <h3 className="text-[#8a4af3] text-2xl font-bold">HomeXpert</h3>
-          <p className="text-gray-600 text-sm">Fresh Groceries Delivered</p>
+        <div className="mt-5 rounded-2xl border border-white/20 bg-white/10 px-4 py-3 text-center backdrop-blur">
+          <h3 className="text-white text-[1.9rem] leading-none font-black tracking-tight">HomeXpert</h3>
         </div>
       </div>
     </div>

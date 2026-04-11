@@ -1,5 +1,5 @@
 import React from 'react'
-import { createBrowserRouter, Navigate, RouterProvider } from 'react-router-dom'
+import { createBrowserRouter, Navigate, RouterProvider, useLocation } from 'react-router-dom'
 import RootLayout from './components/RootLayout'
 import Home from './components/Home'
 import Cart from './components/Cart'
@@ -21,12 +21,15 @@ import { useAuth } from './context/AuthContext'
 // Protected route component
 const ProtectedRoute = ({ children }) => {
   const { currentUser, loading } = useAuth();
+  const location = useLocation();
+  const tab = new URLSearchParams(location.search).get('tab');
+  const isOrdersTab = tab === 'orders';
 
   if (loading) {
     return <div className="flex items-center justify-center h-screen">Loading...</div>;
   }
 
-  if (!currentUser) {
+  if (!currentUser && !isOrdersTab) {
     return <Navigate to="/" replace />;
   }
 

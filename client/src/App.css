@@ -2,3 +2,160 @@
     width: 100vw; /* Full viewport width */
     height: 100vh; /* Full viewport height if needed */
 }
+
+@keyframes float-y {
+    0%, 100% {
+        transform: translate3d(0, 0, 0) scale(1);
+    }
+    50% {
+        transform: translate3d(0, -18px, 0) scale(1.03);
+    }
+}
+
+@keyframes drift-x {
+    0%, 100% {
+        transform: translate3d(0, 0, 0) rotate(0deg);
+    }
+    50% {
+        transform: translate3d(14px, 10px, 0) rotate(6deg);
+    }
+}
+
+@keyframes slow-spin {
+    from {
+        transform: rotate(0deg);
+    }
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+.landing-page {
+    position: relative;
+    overflow: hidden;
+    min-height: 100vh;
+    background:
+        radial-gradient(circle at 15% 10%, rgba(249, 115, 22, 0.18), transparent 28%),
+        radial-gradient(circle at 85% 18%, rgba(6, 182, 212, 0.14), transparent 26%),
+        radial-gradient(circle at 50% 100%, rgba(15, 23, 42, 0.08), transparent 22%),
+        linear-gradient(180deg, #fffaf6 0%, #ffffff 45%, #f8fafc 100%);
+}
+
+.landing-grid {
+    background-image:
+        linear-gradient(rgba(15, 23, 42, 0.04) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(15, 23, 42, 0.04) 1px, transparent 1px);
+    background-size: 48px 48px;
+    mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.72), transparent 100%);
+}
+
+.landing-orb {
+    position: absolute;
+    border-radius: 9999px;
+    filter: blur(20px);
+    opacity: 0.75;
+}
+
+.landing-orb--one {
+    animation: float-y 11s ease-in-out infinite;
+}
+
+.landing-orb--two {
+    animation: drift-x 14s ease-in-out infinite;
+}
+
+.landing-orb--three {
+    animation: float-y 16s ease-in-out infinite reverse;
+}
+
+.landing-ring {
+    animation: slow-spin 28s linear infinite;
+    transform-origin: center;
+}
+
+@keyframes auth-float {
+    0%,
+    100% {
+        transform: translate3d(0, 0, 0);
+    }
+    50% {
+        transform: translate3d(0, -10px, 0);
+    }
+}
+
+@keyframes auth-drift {
+    0%,
+    100% {
+        transform: translate3d(0, 0, 0) rotate(0deg);
+    }
+    50% {
+        transform: translate3d(10px, -8px, 0) rotate(5deg);
+    }
+}
+
+@keyframes auth-sheen {
+    0% {
+        transform: translateX(-140%);
+    }
+    100% {
+        transform: translateX(140%);
+    }
+}
+
+.auth-illus-grid {
+    background-image:
+        linear-gradient(rgba(255, 255, 255, 0.14) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255, 255, 255, 0.14) 1px, transparent 1px);
+    background-size: 34px 34px;
+}
+
+.auth-illus-float {
+    animation: auth-float 8s ease-in-out infinite;
+}
+
+.auth-illus-drift {
+    animation: auth-drift 10s ease-in-out infinite;
+}
+
+.auth-illus-sheen {
+    animation: auth-sheen 4.8s ease-in-out infinite;
+}
+
+@keyframes logo-chip-float {
+    0%,
+    100% {
+        transform: translate3d(0, 0, 0);
+    }
+    50% {
+        transform: translate3d(0, -6px, 0);
+    }
+}
+
+@keyframes logo-chip-glow {
+    0%,
+    100% {
+        opacity: 0.5;
+        transform: scale(1);
+    }
+    50% {
+        opacity: 0.9;
+        transform: scale(1.02);
+    }
+}
+
+.home-logo-chip {
+    animation: logo-chip-float 6s ease-in-out infinite;
+}
+
+.home-logo-glow {
+    background: radial-gradient(circle at center, rgba(124, 58, 237, 0.38) 0%, rgba(124, 58, 237, 0) 70%);
+    filter: blur(8px);
+    animation: logo-chip-glow 5s ease-in-out infinite;
+}
+
+.home-logo-text {
+    background: linear-gradient(130deg, #1f2937 8%, #4c1d95 52%, #7c3aed 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+}

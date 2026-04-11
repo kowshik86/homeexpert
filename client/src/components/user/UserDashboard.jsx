@@ -2,7 +2,6 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useLocation, useNavigate } from 'react-router-dom';
 import UserProfile from './UserProfile';
-import OrderHistory from './OrderHistory';
 import SavedAddresses from './SavedAddresses';
 import Favorites from './Favorites';
 import { toast } from 'react-toastify';
@@ -31,29 +30,32 @@ const getStatusBadgeClass = (status) => {
 };
 
 const UserDashboard = () => {
-  const { currentUser, logout } = useAuth();
+  const { currentUser, logout, openAuthModal } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
-  const [activeTab, setActiveTab] = useState('profile');
-  const [activeOrder, setActiveOrder] = useState(null);
-  const [loadingActiveOrder, setLoadingActiveOrder] = useState(true);
-
-  useEffect(() => {
-    // Redirect to home if not logged in
-    if (!currentUser) {
-      navigate('/');
-    }
-  }, [currentUser, navigate]);
-
-  useEffect(() => {
+  const urlTab = useMemo(() => {
     const params = new URLSearchParams(location.search);
     const tab = params.get('tab');
     const allowedTabs = ['profile', 'orders', 'addresses', 'favorites'];
-
-    if (tab && allowedTabs.includes(tab)) {
-      setActiveTab(tab);
-    }
+    return tab && allowedTabs.includes(tab) ? tab : 'profile';
   }, [location.search]);
+  const [activeTab, setActiveTab] = useState(urlTab);
+  const [activeOrder, setActiveOrder] = useState(null);
+  const [loadingActiveOrder, setLoadingActiveOrder] = useState(true);
+  const [serviceOrders, setServiceOrders] = useState([]);
+  const [loadingServiceOrders, setLoadingServiceOrders] = useState(false);
+  const [serviceOrdersError, setServiceOrdersError] = useState('');
+
+  useEffect(() => {
+    // Redirect to home if not logged in and not viewing the orders page
+    if (!currentUser && urlTab !== 'orders') {
+      navigate('/');
+    }
+  }, [currentUser, urlTab, navigate]);
+
+  useEffect(() => {
+    setActiveTab(urlTab);
+  }, [urlTab]);
 
   useEffect(() => {
     const fetchActiveOrder = async (showLoader = false) => {
@@ -95,6 +97,45 @@ const UserDashboard = () => {
     return () => clearInterval(polling);
   }, [currentUser]);
 
+  useEffect(() => {
+    const fetchServiceOrders = async () => {
+      if (activeTab !== 'orders') {
+        return;
+      }
+
+      if (!currentUser?._id) {
+        setServiceOrders([]);
+        setServiceOrdersError('');
+        setLoadingServiceOrders(false);
+        return;
+      }
+
+      try {
+        setLoadingServiceOrders(true);
+        setServiceOrdersError('');
+
+        const response = await fetch(`http://localhost:3000/order-api/orders/${currentUser._id}`);
+        if (!response.ok) {
+          throw new Error('Failed to fetch service orders');
+        }
+
+        const data = await response.json();
+        const allOrders = Array.isArray(data.payload) ? data.payload : [];
+        const onlyServiceOrders = allOrders
+          .filter((order) => order.bookingType === 'service' && order.serviceBooking)
+          .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+
+        setServiceOrders(onlyServiceOrders);
+      } catch (error) {
+        setServiceOrdersError(error.message || 'Failed to fetch service orders');
+      } finally {
+        setLoadingServiceOrders(false);
+      }
+    };
+
+    fetchServiceOrders();
+  }, [activeTab, currentUser]);
+
   const orderSummaryLabel = useMemo(() => {
     if (!activeOrder) {
       return 'No active orders right now';
@@ -109,8 +150,88 @@ const UserDashboard = () => {
     navigate('/');
   };
 
+  if (activeTab === 'orders') {
+    return (
+      <div className="pt-24 pb-12 bg-gradient-to-b from-cyan-50 via-white to-slate-50 min-h-screen">
+        <div className="container mx-auto px-4">
+          <section className="rounded-[32px] border border-slate-200 bg-white p-6 md:p-8 shadow-[0_24px_60px_rgba(15,23,42,0.08)]">
+            <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-4">
+              <div>
+                <p className="text-xs uppercase tracking-[0.2em] text-primary-custom font-bold">Previous Orders</p>
+                <h1 className="text-3xl md:text-4xl font-black text-slate-900 mt-2">Pick up where you left off.</h1>
+                <p className="text-sm text-slate-600 mt-2 max-w-2xl">Review your latest orders and jump back into booking without opening the cart.</p>
+              </div>
+              <div className="flex flex-wrap gap-3">
+                <button
+                  onClick={() => navigate('/services')}
+                  className="inline-flex items-center rounded-full bg-slate-900 px-5 py-3 text-sm font-semibold text-white hover:bg-slate-800"
+                >
+                  Book Service
+                </button>
+              </div>
+            </div>
+
+            {!currentUser ? (
+              <div className="mt-6 rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-6 text-center">
+                <p className="text-sm text-slate-600">Sign in to see your previous service orders.</p>
+                <button
+                  type="button"
+                  onClick={() => openAuthModal('login')}
+                  className="mt-4 inline-flex items-center rounded-full bg-primary-custom px-5 py-3 text-sm font-semibold text-white hover:opacity-90"
+                >
+                  Sign In
+                </button>
+              </div>
+            ) : loadingServiceOrders ? (
+              <div className="mt-6 grid gap-3 md:grid-cols-3">
+                {[...Array(3)].map((_, index) => (
+                  <div key={index} className="h-36 rounded-2xl bg-slate-100 animate-pulse" />
+                ))}
+              </div>
+            ) : serviceOrdersError ? (
+              <div className="mt-6 rounded-2xl border border-rose-100 bg-rose-50 p-4 text-sm text-rose-700">
+                {serviceOrdersError}
+              </div>
+            ) : serviceOrders.length === 0 ? (
+              <div className="mt-6 rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-6 text-center">
+                <p className="text-sm text-slate-600">No service orders yet. Book your first service and it will appear here.</p>
+              </div>
+            ) : (
+              <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                {serviceOrders.map((order) => {
+                  const serviceName = order.serviceBooking?.serviceName || 'Home Service';
+                  const packageName = order.serviceBooking?.packageName || 'Standard Package';
+                  const serviceImage = order.serviceBooking?.serviceImage || 'https://via.placeholder.com/600x320?text=Service+Order';
+                  const status = (order.orderStatus || 'PLACED').replaceAll('_', ' ');
+
+                  return (
+                    <article key={order._id} className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+                      <img src={serviceImage} alt={serviceName} className="h-36 w-full object-cover" loading="lazy" />
+                      <div className="p-4 space-y-2">
+                        <p className="text-base font-bold text-slate-900">{serviceName}</p>
+                        <p className="text-sm text-slate-600">{packageName}</p>
+                        <div className="flex items-center justify-between text-xs text-slate-500">
+                          <span>Order #{order._id.substring(0, 8)}</span>
+                          <span className="uppercase tracking-wide">{status}</span>
+                        </div>
+                        <div className="flex items-center justify-between text-sm pt-1">
+                          <span className="text-slate-500">Amount</span>
+                          <span className="font-semibold text-slate-900">Rs.{Number(order.totalAmount || 0).toFixed(2)}</span>
+                        </div>
+                      </div>
+                    </article>
+                  );
+                })}
+              </div>
+            )}
+          </section>
+        </div>
+      </div>
+    );
+  }
+
   if (!currentUser) {
-    return null; // Don't render anything if not logged in
+    return null;
   }
 
   const renderTabContent = () => {
