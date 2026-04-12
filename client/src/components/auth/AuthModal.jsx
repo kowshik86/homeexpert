@@ -28,8 +28,8 @@ const AuthModal = () => {
     >
       <div className="bg-white rounded-[28px] shadow-[0_30px_80px_rgba(15,23,42,0.28)] w-full max-w-[760px] overflow-hidden flex font-[Gilroy,arial,Helvetica_Neue,sans-serif] z-50 relative border border-white/60">
         {/* Left side - Image */}
-        <div className="w-2/5 hidden md:block">
-          <div className="h-full w-full bg-gradient-to-br from-[#6d28d9] via-[#8a4af3] to-[#c084fc] flex items-center justify-center p-6">
+        <div className="hidden md:block md:w-[46%] ">
+          <div className="h-full w-full bg-gradient-to-br from-[#6d28d9] via-[#8a4af3] to-[#c084fc] flex items-center justify-center p-4">
             <GroceryBagImage />
           </div>
         </div>

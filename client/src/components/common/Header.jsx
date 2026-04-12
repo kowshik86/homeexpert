@@ -151,12 +151,20 @@ function Header() {
       );
     }
 
+    // Hide consumer section toggle on landing page when user is already logged in.
+    if (isHomePath) {
+      return null;
+    }
+
+    const consumerCtaPath = isServicesPath ? '/products' : '/services';
+    const consumerCtaLabel = isServicesPath ? 'Groceries' : 'Home Services';
+
     return (
       <Link
-        to="/services"
+        to={consumerCtaPath}
         className="inline-flex items-center rounded-full bg-primary-custom px-4 py-2 text-sm font-semibold text-white transition-all duration-300 hover:opacity-90 hover:-translate-y-0.5"
       >
-        Home Services
+        {consumerCtaLabel}
       </Link>
     );
   };

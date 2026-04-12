@@ -22,6 +22,7 @@
     "libphonenumber-js": "^1.12.6",
     "mongoose": "^8.12.1",
     "otp-generator": "^4.0.1",
+    "razorpay": "^2.9.6",
     "server": "file:"
   }
 }

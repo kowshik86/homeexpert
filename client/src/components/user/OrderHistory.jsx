@@ -7,6 +7,8 @@ import { useNavigate } from 'react-router-dom';
 const STATUS_STEPS = ['PLACED', 'CONFIRMED', 'PREPARING', 'OUT_FOR_DELIVERY', 'DELIVERED'];
 const ACTIVE_ORDER_STATUSES = ['PLACED', 'CONFIRMED', 'PREPARING', 'OUT_FOR_DELIVERY'];
 const CANCELLABLE_ORDER_STATUSES = ['PLACED', 'CONFIRMED', 'PREPARING'];
+const isGroceryOrder = (order) => order?.bookingType !== 'service';
+const getOrderItems = (order) => (Array.isArray(order?.orderItems) ? order.orderItems : []);
 
 const getStatusStyles = (status) => {
   switch (status) {
@@ -147,10 +149,11 @@ const OrderHistory = () => {
 
         const data = await response.json();
         const normalizedOrders = Array.isArray(data.payload) ? data.payload : [];
-        setOrders(normalizedOrders);
+        const groceryOrdersOnly = normalizedOrders.filter((order) => isGroceryOrder(order));
+        setOrders(groceryOrdersOnly);
 
         if (selectedOrderId) {
-          const selectedExists = normalizedOrders.some((order) => order._id === selectedOrderId);
+          const selectedExists = groceryOrdersOnly.some((order) => order._id === selectedOrderId);
           if (!selectedExists) {
             setSelectedOrderId('');
           }
@@ -180,45 +183,6 @@ const OrderHistory = () => {
     setSelectedOrderId(order._id);
   };
 
-  const renderServiceBookingSummary = (order) => {
-    if (order.bookingType !== 'service' || !order.serviceBooking) {
-      return null;
-    }
-
-    return (
-      <div className="rounded-2xl border border-cyan-100 bg-cyan-50 p-4 space-y-2">
-        <div className="flex items-center gap-3">
-          <img
-            src={order.serviceBooking.serviceImage || 'https://via.placeholder.com/400x240?text=Service+Booking'}
-            alt={order.serviceBooking.serviceName || 'Service booking'}
-            className="h-14 w-14 rounded-xl object-cover border border-cyan-100"
-          />
-          <div>
-            <p className="text-sm font-bold text-cyan-900">{order.serviceBooking.serviceName}</p>
-            <p className="text-xs text-cyan-700">{order.serviceBooking.packageName}</p>
-          </div>
-        </div>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-2 text-sm text-cyan-900">
-          <div className="rounded-xl bg-white/80 p-3">
-            <p className="text-xs text-cyan-700 uppercase tracking-wide">Scheduled For</p>
-            <p className="mt-1 font-semibold">{order.serviceBooking.scheduledFor ? formatDateTime(order.serviceBooking.scheduledFor) : 'Soon'}</p>
-          </div>
-          <div className="rounded-xl bg-white/80 p-3">
-            <p className="text-xs text-cyan-700 uppercase tracking-wide">Estimated Duration</p>
-            <p className="mt-1 font-semibold">{order.serviceBooking.estimatedDurationMins || 0} mins</p>
-          </div>
-          <div className="rounded-xl bg-white/80 p-3">
-            <p className="text-xs text-cyan-700 uppercase tracking-wide">Assigned Area</p>
-            <p className="mt-1 font-semibold">{order.deliveryAddress.city}, {order.deliveryAddress.state}</p>
-          </div>
-        </div>
-        {order.serviceBooking.notes ? (
-          <p className="text-xs text-cyan-800 bg-white/70 border border-cyan-100 rounded-xl p-3">{order.serviceBooking.notes}</p>
-        ) : null}
-      </div>
-    );
-  };
-
   const handleCloseDetails = () => {
     setSelectedOrderId('');
   };
@@ -226,12 +190,14 @@ const OrderHistory = () => {
   const canCancelOrder = (orderStatus) => CANCELLABLE_ORDER_STATUSES.includes(orderStatus);
 
   const handleReorder = (order) => {
-    if (!order?.orderItems?.length) {
+    const orderItems = getOrderItems(order);
+
+    if (!orderItems.length) {
       toast.error('No items found in this order to reorder.');
       return;
     }
 
-    order.orderItems.forEach((item) => {
+    orderItems.forEach((item) => {
       addToCart({
         _id: item.productId,
         productType: item.productType || 'shopItem',
@@ -311,6 +277,8 @@ const OrderHistory = () => {
     [orders, selectedOrderId],
   );
 
+  const selectedOrderItems = useMemo(() => getOrderItems(selectedOrder), [selectedOrder]);
+
   const activeOrdersCount = useMemo(
     () => orders.filter((order) => ACTIVE_ORDER_STATUSES.includes(order.orderStatus)).length,
     [orders],
@@ -334,7 +302,7 @@ const OrderHistory = () => {
           </svg>
         </div>
         <h3 className="text-lg font-semibold text-slate-900">No orders yet</h3>
-        <p className="mt-1 text-slate-500">As soon as you place an order, live status tracking appears here.</p>
+        <p className="mt-1 text-slate-500">As soon as you place a grocery order, live status tracking appears here.</p>
         <button
           onClick={() => window.location.href = '/products'}
           className="mt-6 inline-flex items-center px-4 py-2 rounded-lg text-sm font-semibold text-white bg-primary-custom hover:bg-opacity-90 focus:outline-none"
@@ -351,7 +319,7 @@ const OrderHistory = () => {
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
           <div>
             <h2 className="text-2xl font-bold text-slate-900">My Orders</h2>
-            <p className="text-sm text-slate-600 mt-1">Track your order updates in real-time with clear delivery progress.</p>
+            <p className="text-sm text-slate-600 mt-1">Track your grocery order updates in real-time with clear delivery progress.</p>
           </div>
           <div className="flex items-center gap-2">
             <span className="inline-flex items-center rounded-full border border-cyan-200 bg-cyan-50 px-3 py-1 text-xs font-semibold text-cyan-800">
@@ -415,26 +383,20 @@ const OrderHistory = () => {
                 <p>Method: {selectedOrder.paymentMethod || 'COD'}</p>
                 <p>Status: {selectedOrder.paymentStatus || 'PENDING'}</p>
                 <p>Last Update: {formatDateTime(selectedOrder.updatedAt)}</p>
-                {selectedOrder.bookingType === 'service' ? <p>Type: Service Booking</p> : <p>Type: Product Order</p>}
+                <p>Type: Grocery Order</p>
               </div>
             </div>
           </div>
 
-          {renderServiceBookingSummary(selectedOrder) ? (
-            <div className="p-4 md:p-5 border-b border-slate-100">
-              {renderServiceBookingSummary(selectedOrder)}
-            </div>
-          ) : null}
-
           <div className="p-4 md:p-5 border-b border-slate-100">
             <h4 className="text-sm font-medium text-slate-500 mb-3">Order Items</h4>
-            {selectedOrder.orderItems.length === 0 ? (
+            {selectedOrderItems.length === 0 ? (
               <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 p-4 text-sm text-slate-500">
-                This is a service booking. Details are shown above.
+                No grocery items were found for this order.
               </div>
             ) : (
               <ul className="divide-y divide-slate-100">
-                {selectedOrder.orderItems.map((item, index) => (
+                {selectedOrderItems.map((item, index) => (
                   <li key={index} className="py-3 flex">
                   <div className="h-16 w-16 flex-shrink-0 overflow-hidden rounded-lg border border-slate-200 bg-white">
                     <img
@@ -523,8 +485,9 @@ const OrderHistory = () => {
           ) : (
             <div className="space-y-3">
               {filteredOrders.map((order) => {
-                const previewNames = order.orderItems.slice(0, 2).map((item) => item.name).join(', ');
-                const remainingItems = order.orderItems.length > 2 ? ` +${order.orderItems.length - 2} more` : '';
+                const orderItems = getOrderItems(order);
+                const previewNames = orderItems.slice(0, 2).map((item) => item.name).join(', ');
+                const remainingItems = orderItems.length > 2 ? ` +${orderItems.length - 2} more` : '';
                 const isActiveOrder = ACTIVE_ORDER_STATUSES.includes(order.orderStatus);
 
                 return (
@@ -548,7 +511,7 @@ const OrderHistory = () => {
                         </div>
 
                         <p className="text-xs text-slate-500 mt-1">Placed on {formatDate(order.createdAt)}</p>
-                        <p className="text-sm text-slate-700 mt-2">{previewNames}{remainingItems}</p>
+                        <p className="text-sm text-slate-700 mt-2">{previewNames || 'No items listed'}{remainingItems}</p>
                         <p className="text-xs text-slate-500 mt-1">{getEtaText(order)}</p>
                       </div>
 

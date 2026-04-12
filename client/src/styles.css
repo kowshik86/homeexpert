@@ -16,6 +16,24 @@ html {
   padding: 0;
 }
 
+button,
+input[type='button'],
+input[type='submit'],
+input[type='reset'] {
+  cursor: pointer;
+}
+
+button:disabled,
+input[type='button']:disabled,
+input[type='submit']:disabled,
+input[type='reset']:disabled {
+  cursor: not-allowed;
+}
+
+img {
+  cursor: pointer;
+}
+
 /* Custom color classes */
 .text-primary-custom {
   color: #8a4af3 !important;

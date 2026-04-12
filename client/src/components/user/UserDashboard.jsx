@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../../context/AuthContext';
+import { useCart } from '../../context/CartContext';
 import { useLocation, useNavigate } from 'react-router-dom';
 import UserProfile from './UserProfile';
 import SavedAddresses from './SavedAddresses';
@@ -7,6 +8,59 @@ import Favorites from './Favorites';
 import { toast } from 'react-toastify';
 
 const ACTIVE_ORDER_STATUSES = ['PLACED', 'CONFIRMED', 'PREPARING', 'OUT_FOR_DELIVERY'];
+const CLOSED_ORDER_STATUSES = ['DELIVERED', 'CANCELLED'];
+const FALLBACK_GROCERY_IMAGE = 'https://images.unsplash.com/photo-1542838132-92c53300491e?auto=format&fit=crop&w=1200&q=80';
+
+const isGroceryOrder = (order) => order?.bookingType !== 'service';
+
+const getOrderItems = (order) => (Array.isArray(order?.orderItems) ? order.orderItems : []);
+
+const getOrderItemCount = (order) => {
+  return getOrderItems(order).reduce((total, item) => total + Number(item?.quantity || 0), 0);
+};
+
+const formatMoney = (value) => `Rs.${Number(value || 0).toFixed(2)}`;
+
+const formatOrderDate = (dateValue) => {
+  const date = dateValue ? new Date(dateValue) : null;
+  if (!date || Number.isNaN(date.getTime())) {
+    return 'N/A';
+  }
+
+  return date.toLocaleString(undefined, {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+};
+
+const getEtaText = (order) => {
+  if (order.orderStatus === 'DELIVERED') {
+    return 'Delivered';
+  }
+
+  if (order.orderStatus === 'CANCELLED') {
+    return 'Cancelled';
+  }
+
+  if (!order.expectedDeliveryTime) {
+    return 'ETA will be updated soon';
+  }
+
+  return `ETA ${formatOrderDate(order.expectedDeliveryTime)}`;
+};
+
+const getOrderPreviewItem = (order) => getOrderItems(order)[0] || null;
+
+const getOrderPreviewImage = (order) => {
+  const imageUrl = typeof getOrderPreviewItem(order)?.imageUrl === 'string'
+    ? getOrderPreviewItem(order).imageUrl.trim()
+    : '';
+
+  return /^https?:\/\//i.test(imageUrl) ? imageUrl : FALLBACK_GROCERY_IMAGE;
+};
 
 const formatOrderStatus = (status) => {
   return (status || 'PLACED')
@@ -31,6 +85,7 @@ const getStatusBadgeClass = (status) => {
 
 const UserDashboard = () => {
   const { currentUser, logout, openAuthModal } = useAuth();
+  const { addToCart } = useCart();
   const navigate = useNavigate();
   const location = useLocation();
   const urlTab = useMemo(() => {
@@ -42,9 +97,12 @@ const UserDashboard = () => {
   const [activeTab, setActiveTab] = useState(urlTab);
   const [activeOrder, setActiveOrder] = useState(null);
   const [loadingActiveOrder, setLoadingActiveOrder] = useState(true);
-  const [serviceOrders, setServiceOrders] = useState([]);
-  const [loadingServiceOrders, setLoadingServiceOrders] = useState(false);
-  const [serviceOrdersError, setServiceOrdersError] = useState('');
+  const [groceryOrders, setGroceryOrders] = useState([]);
+  const [loadingGroceryOrders, setLoadingGroceryOrders] = useState(false);
+  const [groceryOrdersError, setGroceryOrdersError] = useState('');
+  const [orderSearch, setOrderSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState('ALL');
+  const [expandedOrderId, setExpandedOrderId] = useState('');
 
   useEffect(() => {
     // Redirect to home if not logged in and not viewing the orders page
@@ -77,7 +135,8 @@ const UserDashboard = () => {
 
         const data = await response.json();
         const allOrders = Array.isArray(data.payload) ? data.payload : [];
-        const firstActive = allOrders.find((order) => ACTIVE_ORDER_STATUSES.includes(order.orderStatus));
+        const groceryOrdersOnly = allOrders.filter(isGroceryOrder);
+        const firstActive = groceryOrdersOnly.find((order) => ACTIVE_ORDER_STATUSES.includes(order.orderStatus));
         setActiveOrder(firstActive || null);
       } catch (error) {
         console.error('Error loading active order:', error);
@@ -98,42 +157,42 @@ const UserDashboard = () => {
   }, [currentUser]);
 
   useEffect(() => {
-    const fetchServiceOrders = async () => {
+    const fetchGroceryOrders = async () => {
       if (activeTab !== 'orders') {
         return;
       }
 
       if (!currentUser?._id) {
-        setServiceOrders([]);
-        setServiceOrdersError('');
-        setLoadingServiceOrders(false);
+        setGroceryOrders([]);
+        setGroceryOrdersError('');
+        setLoadingGroceryOrders(false);
         return;
       }
 
       try {
-        setLoadingServiceOrders(true);
-        setServiceOrdersError('');
+        setLoadingGroceryOrders(true);
+        setGroceryOrdersError('');
 
         const response = await fetch(`http://localhost:3000/order-api/orders/${currentUser._id}`);
         if (!response.ok) {
-          throw new Error('Failed to fetch service orders');
+          throw new Error('Failed to fetch grocery orders');
         }
 
         const data = await response.json();
         const allOrders = Array.isArray(data.payload) ? data.payload : [];
-        const onlyServiceOrders = allOrders
-          .filter((order) => order.bookingType === 'service' && order.serviceBooking)
+        const onlyGroceryOrders = allOrders
+          .filter((order) => isGroceryOrder(order))
           .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
 
-        setServiceOrders(onlyServiceOrders);
+        setGroceryOrders(onlyGroceryOrders);
       } catch (error) {
-        setServiceOrdersError(error.message || 'Failed to fetch service orders');
+        setGroceryOrdersError(error.message || 'Failed to fetch grocery orders');
       } finally {
-        setLoadingServiceOrders(false);
+        setLoadingGroceryOrders(false);
       }
     };
 
-    fetchServiceOrders();
+    fetchGroceryOrders();
   }, [activeTab, currentUser]);
 
   const orderSummaryLabel = useMemo(() => {
@@ -143,6 +202,97 @@ const UserDashboard = () => {
 
     return `Order #${activeOrder._id.substring(0, 8)} is ${formatOrderStatus(activeOrder.orderStatus)}`;
   }, [activeOrder]);
+
+  const filteredGroceryOrders = useMemo(() => {
+    const normalizedSearch = orderSearch.trim().toLowerCase();
+
+    return groceryOrders.filter((order) => {
+      const statusMatches =
+        statusFilter === 'ALL'
+          ? true
+          : statusFilter === 'ACTIVE'
+            ? ACTIVE_ORDER_STATUSES.includes(order.orderStatus)
+            : CLOSED_ORDER_STATUSES.includes(order.orderStatus);
+
+      if (!statusMatches) {
+        return false;
+      }
+
+      if (!normalizedSearch) {
+        return true;
+      }
+
+      const orderIdPart = String(order?._id || '').toLowerCase();
+      const itemNames = getOrderItems(order)
+        .map((item) => String(item?.name || '').toLowerCase())
+        .join(' ');
+
+      return orderIdPart.includes(normalizedSearch) || itemNames.includes(normalizedSearch);
+    });
+  }, [groceryOrders, orderSearch, statusFilter]);
+
+  const orderMetrics = useMemo(() => {
+    const activeCount = groceryOrders.filter((order) => ACTIVE_ORDER_STATUSES.includes(order.orderStatus)).length;
+    const deliveredCount = groceryOrders.filter((order) => order.orderStatus === 'DELIVERED').length;
+    const totalSpend = groceryOrders.reduce((total, order) => total + Number(order?.totalAmount || 0), 0);
+
+    return { activeCount, deliveredCount, totalSpend };
+  }, [groceryOrders]);
+
+  const handleQuickReorder = (order) => {
+    const items = getOrderItems(order);
+
+    if (!items.length) {
+      toast.error('No items found in this order to reorder.');
+      return;
+    }
+
+    items.forEach((item) => {
+      addToCart({
+        _id: item.productId,
+        productType: item.productType || 'shopItem',
+        name: item.name,
+        imageUrl: item.imageUrl,
+        price: Number(item.price || 0),
+        quantity: Number(item.quantity || 1),
+      });
+    });
+
+    toast.success('Items added to cart.');
+    navigate('/cart');
+  };
+
+  const handleDownloadInvoice = (order) => {
+    const items = getOrderItems(order);
+    const orderId = String(order?._id || '').slice(0, 8);
+    const lines = [
+      'HomeXpert Grocery Invoice',
+      `Order ID: ${orderId}`,
+      `Date: ${formatOrderDate(order?.createdAt)}`,
+      `Status: ${formatOrderStatus(order?.orderStatus)}`,
+      '',
+      'Items:',
+      ...items.map((item) => `- ${item.name} x${item.quantity} = ${formatMoney(item.totalPrice)}`),
+      '',
+      `Subtotal: ${formatMoney(order?.subtotal)}`,
+      `Delivery Fee: ${formatMoney(order?.deliveryFee)}`,
+      `Discount: ${formatMoney(order?.discount)}`,
+      `Total: ${formatMoney(order?.totalAmount)}`,
+      '',
+      `Payment Method: ${order?.paymentMethod || 'COD'}`,
+      `Payment Status: ${order?.paymentStatus || 'PENDING'}`,
+    ];
+
+    const blob = new Blob([lines.join('\n')], { type: 'text/plain;charset=utf-8' });
+    const objectUrl = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = objectUrl;
+    link.download = `invoice-${orderId}.txt`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(objectUrl);
+  };
 
   const handleLogout = () => {
     logout();
@@ -157,23 +307,23 @@ const UserDashboard = () => {
           <section className="rounded-[32px] border border-slate-200 bg-white p-6 md:p-8 shadow-[0_24px_60px_rgba(15,23,42,0.08)]">
             <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-4">
               <div>
-                <p className="text-xs uppercase tracking-[0.2em] text-primary-custom font-bold">Previous Orders</p>
-                <h1 className="text-3xl md:text-4xl font-black text-slate-900 mt-2">Pick up where you left off.</h1>
-                <p className="text-sm text-slate-600 mt-2 max-w-2xl">Review your latest orders and jump back into booking without opening the cart.</p>
+                <p className="text-xs uppercase tracking-[0.2em] text-primary-custom font-bold">Previous Grocery Orders</p>
+                <h1 className="text-3xl md:text-4xl font-black text-slate-900 mt-2">Your grocery orders, organized.</h1>
+                <p className="text-sm text-slate-600 mt-2 max-w-2xl">See exact items, track live progress, reorder in one tap, and download invoices anytime.</p>
               </div>
               <div className="flex flex-wrap gap-3">
                 <button
-                  onClick={() => navigate('/services')}
+                  onClick={() => navigate('/products')}
                   className="inline-flex items-center rounded-full bg-slate-900 px-5 py-3 text-sm font-semibold text-white hover:bg-slate-800"
                 >
-                  Book Service
+                  Continue Shopping
                 </button>
               </div>
             </div>
 
             {!currentUser ? (
               <div className="mt-6 rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-6 text-center">
-                <p className="text-sm text-slate-600">Sign in to see your previous service orders.</p>
+                <p className="text-sm text-slate-600">Sign in to see your grocery orders.</p>
                 <button
                   type="button"
                   onClick={() => openAuthModal('login')}
@@ -182,46 +332,205 @@ const UserDashboard = () => {
                   Sign In
                 </button>
               </div>
-            ) : loadingServiceOrders ? (
-              <div className="mt-6 grid gap-3 md:grid-cols-3">
+            ) : loadingGroceryOrders ? (
+              <div className="mt-6 space-y-4">
                 {[...Array(3)].map((_, index) => (
-                  <div key={index} className="h-36 rounded-2xl bg-slate-100 animate-pulse" />
+                  <div key={index} className="h-52 rounded-2xl bg-slate-100 animate-pulse" />
                 ))}
               </div>
-            ) : serviceOrdersError ? (
+            ) : groceryOrdersError ? (
               <div className="mt-6 rounded-2xl border border-rose-100 bg-rose-50 p-4 text-sm text-rose-700">
-                {serviceOrdersError}
+                {groceryOrdersError}
               </div>
-            ) : serviceOrders.length === 0 ? (
+            ) : groceryOrders.length === 0 ? (
               <div className="mt-6 rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-6 text-center">
-                <p className="text-sm text-slate-600">No service orders yet. Book your first service and it will appear here.</p>
+                <p className="text-sm text-slate-600">No grocery orders yet. Place your first order and it will appear here.</p>
               </div>
             ) : (
-              <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-                {serviceOrders.map((order) => {
-                  const serviceName = order.serviceBooking?.serviceName || 'Home Service';
-                  const packageName = order.serviceBooking?.packageName || 'Standard Package';
-                  const serviceImage = order.serviceBooking?.serviceImage || 'https://via.placeholder.com/600x320?text=Service+Order';
-                  const status = (order.orderStatus || 'PLACED').replaceAll('_', ' ');
+              <div className="mt-6 space-y-5">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  <div className="rounded-2xl border border-cyan-100 bg-cyan-50 p-4">
+                    <p className="text-xs uppercase tracking-wide text-cyan-700">Active Orders</p>
+                    <p className="text-2xl font-black text-cyan-900 mt-1">{orderMetrics.activeCount}</p>
+                  </div>
+                  <div className="rounded-2xl border border-emerald-100 bg-emerald-50 p-4">
+                    <p className="text-xs uppercase tracking-wide text-emerald-700">Delivered Orders</p>
+                    <p className="text-2xl font-black text-emerald-900 mt-1">{orderMetrics.deliveredCount}</p>
+                  </div>
+                  <div className="rounded-2xl border border-amber-100 bg-amber-50 p-4">
+                    <p className="text-xs uppercase tracking-wide text-amber-700">Total Spend</p>
+                    <p className="text-2xl font-black text-amber-900 mt-1">{formatMoney(orderMetrics.totalSpend)}</p>
+                  </div>
+                </div>
 
-                  return (
-                    <article key={order._id} className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-                      <img src={serviceImage} alt={serviceName} className="h-36 w-full object-cover" loading="lazy" />
-                      <div className="p-4 space-y-2">
-                        <p className="text-base font-bold text-slate-900">{serviceName}</p>
-                        <p className="text-sm text-slate-600">{packageName}</p>
-                        <div className="flex items-center justify-between text-xs text-slate-500">
-                          <span>Order #{order._id.substring(0, 8)}</span>
-                          <span className="uppercase tracking-wide">{status}</span>
-                        </div>
-                        <div className="flex items-center justify-between text-sm pt-1">
-                          <span className="text-slate-500">Amount</span>
-                          <span className="font-semibold text-slate-900">Rs.{Number(order.totalAmount || 0).toFixed(2)}</span>
-                        </div>
-                      </div>
-                    </article>
-                  );
-                })}
+                <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4 flex flex-col lg:flex-row gap-3 lg:items-center lg:justify-between">
+                  <div className="relative w-full lg:max-w-md">
+                    <input
+                      type="text"
+                      value={orderSearch}
+                      onChange={(event) => setOrderSearch(event.target.value)}
+                      placeholder="Search by order ID or item name"
+                      className="w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-700 outline-none focus:border-primary-custom"
+                    />
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {['ALL', 'ACTIVE', 'COMPLETED'].map((filter) => (
+                      <button
+                        key={filter}
+                        onClick={() => setStatusFilter(filter)}
+                        className={`rounded-full px-4 py-2 text-xs font-semibold ${statusFilter === filter ? 'bg-slate-900 text-white' : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-100'}`}
+                      >
+                        {filter}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {filteredGroceryOrders.length === 0 ? (
+                  <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-6 text-center text-sm text-slate-600">
+                    No orders match your current search or filter.
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    {filteredGroceryOrders.map((order) => {
+                      const items = getOrderItems(order);
+                      const previewImage = getOrderPreviewImage(order);
+                      const itemCount = getOrderItemCount(order);
+                      const isExpanded = expandedOrderId === order._id;
+
+                      return (
+                        <article key={order._id} className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+                          <div className="p-4 md:p-5">
+                            <div className="flex flex-col xl:flex-row gap-4 xl:items-start xl:justify-between">
+                              <div className="flex gap-4">
+                                <img
+                                  src={previewImage}
+                                  alt={items[0]?.name || 'Grocery order'}
+                                  className="h-20 w-20 rounded-xl object-cover border border-slate-200"
+                                  onError={(event) => {
+                                    const imageElement = event.currentTarget;
+                                    imageElement.onerror = null;
+                                    imageElement.src = FALLBACK_GROCERY_IMAGE;
+                                  }}
+                                />
+
+                                <div>
+                                  <div className="flex flex-wrap items-center gap-2">
+                                    <p className="text-sm font-bold text-slate-900">Order #{String(order._id).substring(0, 8)}</p>
+                                    <span className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold ${getStatusBadgeClass(order.orderStatus)}`}>
+                                      {formatOrderStatus(order.orderStatus)}
+                                    </span>
+                                    {ACTIVE_ORDER_STATUSES.includes(order.orderStatus) ? (
+                                      <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-700">
+                                        <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
+                                        Live
+                                      </span>
+                                    ) : null}
+                                  </div>
+
+                                  <p className="text-xs text-slate-500 mt-1">Placed on {formatOrderDate(order.createdAt)}</p>
+                                  <p className="text-xs text-slate-500 mt-1">{itemCount} item{itemCount === 1 ? '' : 's'} • {getEtaText(order)}</p>
+                                </div>
+                              </div>
+
+                              <div className="text-left xl:text-right">
+                                <p className="text-xs text-slate-500">Total</p>
+                                <p className="text-xl font-black text-slate-900">{formatMoney(order.totalAmount)}</p>
+                                <p className="text-xs text-slate-500 mt-1">{order.paymentMethod || 'COD'} • {order.paymentStatus || 'PENDING'}</p>
+                              </div>
+                            </div>
+
+                            <div className="mt-4 flex flex-wrap gap-2">
+                              {items.slice(0, 4).map((item, index) => (
+                                <span key={`${order._id}-${index}`} className="inline-flex items-center rounded-full bg-slate-100 px-3 py-1 text-xs text-slate-700">
+                                  {item.name} x{item.quantity}
+                                </span>
+                              ))}
+                              {items.length > 4 ? (
+                                <span className="inline-flex items-center rounded-full bg-slate-200 px-3 py-1 text-xs text-slate-700">
+                                  +{items.length - 4} more
+                                </span>
+                              ) : null}
+                            </div>
+
+                            <div className="mt-4 flex flex-wrap items-center gap-2">
+                              <button
+                                onClick={() => handleQuickReorder(order)}
+                                className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-100"
+                              >
+                                Reorder
+                              </button>
+                              <button
+                                onClick={() => setExpandedOrderId((prev) => (prev === order._id ? '' : order._id))}
+                                className="rounded-lg bg-primary-custom px-3 py-2 text-xs font-semibold text-white hover:bg-opacity-90"
+                              >
+                                {isExpanded ? 'Hide Details' : 'Track & Details'}
+                              </button>
+                              <button
+                                onClick={() => handleDownloadInvoice(order)}
+                                className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-100"
+                              >
+                                Download Invoice
+                              </button>
+                            </div>
+                          </div>
+
+                          {isExpanded ? (
+                            <div className="border-t border-slate-100 bg-slate-50/60 p-4 md:p-5">
+                              <div className="grid gap-4 lg:grid-cols-2">
+                                <div>
+                                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Ordered Items</p>
+                                  <ul className="mt-3 space-y-2">
+                                    {items.map((item, index) => (
+                                      <li key={`${order._id}-detail-${index}`} className="flex items-center justify-between rounded-xl bg-white border border-slate-200 px-3 py-2">
+                                        <span className="text-sm text-slate-700">{item.name} x{item.quantity}</span>
+                                        <span className="text-sm font-semibold text-slate-900">{formatMoney(item.totalPrice)}</span>
+                                      </li>
+                                    ))}
+                                  </ul>
+                                </div>
+
+                                <div className="space-y-3">
+                                  <div className="rounded-xl bg-white border border-slate-200 p-3">
+                                    <p className="text-xs uppercase tracking-wide text-slate-500">Delivery Address</p>
+                                    <p className="text-sm text-slate-800 mt-1">
+                                      {order.deliveryAddress?.fullName || 'N/A'} • {order.deliveryAddress?.mobileNumber || 'N/A'}
+                                    </p>
+                                    <p className="text-sm text-slate-700 mt-1">
+                                      {order.deliveryAddress?.addressLine1 || ''}{order.deliveryAddress?.addressLine2 ? `, ${order.deliveryAddress.addressLine2}` : ''}
+                                    </p>
+                                    <p className="text-sm text-slate-700 mt-1">
+                                      {order.deliveryAddress?.city || ''}, {order.deliveryAddress?.state || ''} - {order.deliveryAddress?.pincode || ''}
+                                    </p>
+                                  </div>
+
+                                  <div className="rounded-xl bg-white border border-slate-200 p-3 space-y-1.5">
+                                    <div className="flex items-center justify-between text-sm text-slate-700">
+                                      <span>Subtotal</span>
+                                      <span>{formatMoney(order.subtotal)}</span>
+                                    </div>
+                                    <div className="flex items-center justify-between text-sm text-slate-700">
+                                      <span>Delivery Fee</span>
+                                      <span>{formatMoney(order.deliveryFee)}</span>
+                                    </div>
+                                    <div className="flex items-center justify-between text-sm text-slate-700">
+                                      <span>Discount</span>
+                                      <span>-{formatMoney(order.discount)}</span>
+                                    </div>
+                                    <div className="border-t border-slate-200 pt-1.5 flex items-center justify-between text-sm font-bold text-slate-900">
+                                      <span>Total</span>
+                                      <span>{formatMoney(order.totalAmount)}</span>
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          ) : null}
+                        </article>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
             )}
           </section>

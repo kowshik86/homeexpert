@@ -63,7 +63,7 @@ const OtpVerification = () => {
       setLoading(true);
       await verifyOTP(otpValue);
       toast.success('Logged in successfully');
-      window.location.href = '/account';
+      window.location.href = '/';
     } catch (error) {
       setError(error.message || 'OTP verification failed. Please try again.');
       toast.error(error.message || 'OTP verification failed. Please try again.');

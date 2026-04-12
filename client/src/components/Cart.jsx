@@ -4,6 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import { Link, useNavigate } from 'react-router-dom';
 import { toast } from 'react-toastify';
 import { createOrder, fetchUserAddresses } from '../services/api';
+import { startOnlinePayment } from '../services/paymentGateway';
 
 const Cart = () => {
   const navigate = useNavigate();
@@ -13,6 +14,7 @@ const Cart = () => {
   const [selectedAddressId, setSelectedAddressId] = useState('');
   const [loadingAddresses, setLoadingAddresses] = useState(false);
   const [placingOrder, setPlacingOrder] = useState(false);
+  const [paymentMethod, setPaymentMethod] = useState('COD');
 
   const deliveryFee = 40;
   const finalTotal = cartTotal + deliveryFee;
@@ -80,6 +82,34 @@ const Cart = () => {
 
     try {
       setPlacingOrder(true);
+      let paymentDetails = {};
+      const isGatewayPayment = paymentMethod === 'ONLINE' || paymentMethod === 'UPI';
+
+      if (isGatewayPayment) {
+        const customerName = `${currentUser.firstName || ''} ${currentUser.lastName || ''}`.trim() || 'HomeXpert Customer';
+        const paymentResult = await startOnlinePayment({
+          amount: Number(finalTotal.toFixed(2)),
+          customer: {
+            name: customerName,
+            email: currentUser.email || '',
+            contact: currentUser.mobileNumber || selectedAddress.mobileNumber,
+          },
+          description: 'HomeXpert Cart Checkout',
+          notes: {
+            bookingType: 'product',
+            userId: String(currentUser._id || ''),
+            itemCount: String(orderItems.length),
+          },
+          preferredMethod: paymentMethod,
+        });
+
+        paymentDetails = {
+          paymentGateway: 'RAZORPAY',
+          paymentGatewayOrderId: paymentResult.paymentGatewayOrderId || paymentResult.razorpay_order_id,
+          paymentGatewayPaymentId: paymentResult.paymentGatewayPaymentId || paymentResult.razorpay_payment_id,
+          paymentGatewaySignature: paymentResult.paymentGatewaySignature || paymentResult.razorpay_signature,
+        };
+      }
 
       const payload = {
         userId: currentUser._id,
@@ -96,19 +126,24 @@ const Cart = () => {
           addressType: selectedAddress.addressType || 'home',
           isDefault: !!selectedAddress.isDefault,
         },
-        paymentMethod: 'COD',
-        paymentStatus: 'PENDING',
+        paymentMethod,
+        paymentStatus: isGatewayPayment ? 'PAID' : 'PENDING',
         orderStatus: 'PLACED',
         subtotal: Number(cartTotal.toFixed(2)),
         deliveryFee,
         discount: 0,
         totalAmount: Number(finalTotal.toFixed(2)),
         expectedDeliveryTime: new Date(Date.now() + 35 * 60 * 1000),
+        ...paymentDetails,
       };
 
       await createOrder(payload);
       clearCart();
-      toast.success('Order placed successfully. Delivery partner has been notified.');
+      toast.success(
+        isGatewayPayment
+          ? 'Payment successful and order placed. Delivery partner has been notified.'
+          : 'Order placed successfully. Delivery partner has been notified.',
+      );
       navigate('/account?tab=orders');
     } catch (error) {
       toast.error(error.message || 'Failed to place your order. Please try again.');
@@ -313,12 +348,63 @@ const Cart = () => {
               </div>
             ) : null}
 
+            {currentUser ? (
+              <div className="mb-4 rounded-md border border-gray-200 p-3 bg-gray-50">
+                <p className="text-sm font-semibold text-gray-800 mb-2">Payment Method</p>
+                <div className="space-y-2">
+                  <label className="flex items-center gap-2 text-sm text-gray-700">
+                    <input
+                      type="radio"
+                      name="cart-payment-method"
+                      value="COD"
+                      checked={paymentMethod === 'COD'}
+                      onChange={(event) => setPaymentMethod(event.target.value)}
+                      disabled={placingOrder}
+                    />
+                    Cash on Delivery
+                  </label>
+                  <label className="flex items-center gap-2 text-sm text-gray-700">
+                    <input
+                      type="radio"
+                      name="cart-payment-method"
+                      value="UPI"
+                      checked={paymentMethod === 'UPI'}
+                      onChange={(event) => setPaymentMethod(event.target.value)}
+                      disabled={placingOrder}
+                    />
+                    UPI (PhonePe / Google Pay / Paytm)
+                  </label>
+                  <label className="flex items-center gap-2 text-sm text-gray-700">
+                    <input
+                      type="radio"
+                      name="cart-payment-method"
+                      value="ONLINE"
+                      checked={paymentMethod === 'ONLINE'}
+                      onChange={(event) => setPaymentMethod(event.target.value)}
+                      disabled={placingOrder}
+                    />
+                    Cards / Netbanking / Wallet
+                  </label>
+                </div>
+              </div>
+            ) : null}
+
             <button
               onClick={handleProceedCheckout}
               disabled={placingOrder || (currentUser && addresses.length === 0)}
               className="w-full bg-primary-custom text-white py-2 md:py-3 rounded-md hover:bg-opacity-80 hover:shadow-md transition-all duration-300 transform hover:scale-105 text-sm md:text-base font-[Gilroy,_Arial,_Helvetica_Neue,_sans-serif]"
             >
-              {placingOrder ? 'Placing Order...' : currentUser ? 'Proceed to Checkout' : 'Login to Checkout'}
+              {placingOrder
+                ? paymentMethod === 'ONLINE' || paymentMethod === 'UPI'
+                  ? 'Processing Payment...'
+                  : 'Placing Order...'
+                : currentUser
+                  ? paymentMethod === 'UPI'
+                    ? `Pay via UPI ₹${finalTotal.toFixed(2)}`
+                    : paymentMethod === 'ONLINE'
+                      ? `Pay Online ₹${finalTotal.toFixed(2)}`
+                    : 'Proceed to Checkout'
+                  : 'Login to Checkout'}
             </button>
           </div>
         </div>

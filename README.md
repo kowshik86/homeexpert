@@ -38,7 +38,7 @@ npm install
 npm run dev
 ```
 
-The server will start on http://localhost:4000
+The server will start on http://localhost:3000
 
 #### Start the Frontend Application
 
@@ -48,6 +48,23 @@ npm run dev
 ```
 
 The client will start on http://localhost:5173
+
+### Online Payment Setup (Razorpay)
+
+Online payment is implemented for both:
+
+- Product checkout from Cart
+- Service booking checkout
+
+Add the following environment variables in the server environment:
+
+```bash
+DB_URL=<your_mongodb_connection_string>
+RAZORPAY_KEY_ID=<your_razorpay_key_id>
+RAZORPAY_KEY_SECRET=<your_razorpay_key_secret>
+```
+
+If Razorpay keys are not configured, the app will continue to work with Cash on Delivery.
 
 ### Using Mock Data
 

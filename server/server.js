@@ -1,6 +1,7 @@
 const exp =require("express")
 const app=exp()
-require('dotenv').config();
+const path = require('path');
+require('dotenv').config({ path: path.join(__dirname, '.env') });
 const mongoose =require("mongoose");
 const userApp = require("./APIs/user.js");
 const shopApp = require("./APIs/shopkeeper.js");

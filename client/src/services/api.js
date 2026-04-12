@@ -319,3 +319,51 @@ export const createServiceBooking = async (payload) => {
     throw error;
   }
 };
+
+export const getPaymentGatewayConfig = async () => {
+  try {
+    const response = await fetch(`${API_BASE_URL}/order-api/payment/config`);
+    return await handleApiResponse(response, 'Failed to fetch payment gateway config');
+  } catch (error) {
+    console.error('Error fetching payment gateway config:', error);
+    return {
+      provider: 'RAZORPAY',
+      enabled: false,
+      keyId: '',
+    };
+  }
+};
+
+export const createPaymentOrder = async ({ amount, currency = 'INR', receipt, notes = {} }) => {
+  try {
+    const response = await fetch(`${API_BASE_URL}/order-api/payment/create-order`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ amount, currency, receipt, notes }),
+    });
+
+    return await handleApiResponse(response, 'Failed to create payment order');
+  } catch (error) {
+    console.error('Error creating payment order:', error);
+    throw error;
+  }
+};
+
+export const verifyPaymentOrder = async (paymentPayload) => {
+  try {
+    const response = await fetch(`${API_BASE_URL}/order-api/payment/verify`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(paymentPayload),
+    });
+
+    return await handleApiResponse(response, 'Failed to verify payment');
+  } catch (error) {
+    console.error('Error verifying payment:', error);
+    throw error;
+  }
+};

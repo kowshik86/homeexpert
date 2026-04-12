@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { toast } from 'react-toastify';
 import { createServiceBooking, fetchUserAddresses } from '../services/api';
 import { useAuth } from '../context/AuthContext';
+import { startOnlinePayment } from '../services/paymentGateway';
 
 const FALLBACK_SERVICE_IMAGE = 'https://images.unsplash.com/photo-1581578731548-c64695cc6952?auto=format&fit=crop&w=1200&q=80';
 
@@ -63,6 +64,7 @@ function ServiceBookingPage() {
   const [preferredTime, setPreferredTime] = useState('');
   const [notes, setNotes] = useState('');
   const [booking, setBooking] = useState(false);
+  const [paymentMethod, setPaymentMethod] = useState('COD');
 
   const service = useMemo(() => getSelectedService(serviceSlug), [serviceSlug]);
   const selectedPackage = useMemo(
@@ -124,6 +126,34 @@ function ServiceBookingPage() {
 
     try {
       setBooking(true);
+      let paymentDetails = {};
+      const isGatewayPayment = paymentMethod === 'ONLINE' || paymentMethod === 'UPI';
+
+      if (isGatewayPayment) {
+        const customerName = `${currentUser.firstName || ''} ${currentUser.lastName || ''}`.trim() || 'HomeXpert Customer';
+        const paymentResult = await startOnlinePayment({
+          amount: Number(selectedPackage.price),
+          customer: {
+            name: customerName,
+            email: currentUser.email || '',
+            contact: currentUser.mobileNumber || selectedAddress.mobileNumber,
+          },
+          description: `${service.title} - ${selectedPackage.name}`,
+          notes: {
+            bookingType: 'service',
+            serviceSlug: serviceSlug || 'cleaning',
+            userId: String(currentUser._id || ''),
+          },
+          preferredMethod: paymentMethod,
+        });
+
+        paymentDetails = {
+          paymentGateway: 'RAZORPAY',
+          paymentGatewayOrderId: paymentResult.paymentGatewayOrderId || paymentResult.razorpay_order_id,
+          paymentGatewayPaymentId: paymentResult.paymentGatewayPaymentId || paymentResult.razorpay_payment_id,
+          paymentGatewaySignature: paymentResult.paymentGatewaySignature || paymentResult.razorpay_signature,
+        };
+      }
 
       const scheduledFor = new Date(`${preferredDate}T${preferredTime}:00`);
 
@@ -153,16 +183,21 @@ function ServiceBookingPage() {
           estimatedDurationMins: selectedPackage.duration,
           estimatedPrice: selectedPackage.price,
         },
-        paymentMethod: 'COD',
-        paymentStatus: 'PENDING',
+        paymentMethod,
+        paymentStatus: isGatewayPayment ? 'PAID' : 'PENDING',
         orderStatus: 'PLACED',
         subtotal: selectedPackage.price,
         deliveryFee: 0,
         discount: 0,
         totalAmount: selectedPackage.price,
+        ...paymentDetails,
       });
 
-      toast.success('Service booked successfully. A professional has been assigned.');
+      toast.success(
+        isGatewayPayment
+          ? 'Payment successful and service booked. A professional has been assigned.'
+          : 'Service booked successfully. A professional has been assigned.',
+      );
       navigate('/account?tab=orders');
     } catch (error) {
       toast.error(error.message || 'Failed to place your service booking.');
@@ -259,13 +294,60 @@ function ServiceBookingPage() {
                   />
                 </div>
 
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-2">Payment Method</label>
+                  <div className="rounded-xl border border-slate-200 p-3 space-y-2 bg-slate-50">
+                    <label className="flex items-center gap-2 text-sm text-slate-700">
+                      <input
+                        type="radio"
+                        name="service-payment-method"
+                        value="COD"
+                        checked={paymentMethod === 'COD'}
+                        onChange={(event) => setPaymentMethod(event.target.value)}
+                        disabled={booking}
+                      />
+                      Cash on Delivery
+                    </label>
+                    <label className="flex items-center gap-2 text-sm text-slate-700">
+                      <input
+                        type="radio"
+                        name="service-payment-method"
+                        value="UPI"
+                        checked={paymentMethod === 'UPI'}
+                        onChange={(event) => setPaymentMethod(event.target.value)}
+                        disabled={booking}
+                      />
+                      UPI (PhonePe / Google Pay / Paytm)
+                    </label>
+                    <label className="flex items-center gap-2 text-sm text-slate-700">
+                      <input
+                        type="radio"
+                        name="service-payment-method"
+                        value="ONLINE"
+                        checked={paymentMethod === 'ONLINE'}
+                        onChange={(event) => setPaymentMethod(event.target.value)}
+                        disabled={booking}
+                      />
+                      Cards / Netbanking / Wallet
+                    </label>
+                  </div>
+                </div>
+
                 <div className="flex flex-wrap gap-3">
                   <button
                     type="submit"
                     disabled={booking || !selectedAddress}
                     className="rounded-full bg-primary-custom px-5 py-3 text-sm font-semibold text-white hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
                   >
-                    {booking ? 'Booking...' : `Book ${service.title}`}
+                    {booking
+                      ? paymentMethod === 'ONLINE' || paymentMethod === 'UPI'
+                        ? 'Processing Payment...'
+                        : 'Booking...'
+                      : paymentMethod === 'UPI'
+                        ? `Pay via UPI Rs.${selectedPackage.price}`
+                        : paymentMethod === 'ONLINE'
+                          ? `Pay Online Rs.${selectedPackage.price}`
+                        : `Book ${service.title}`}
                   </button>
                   <button
                     type="button"

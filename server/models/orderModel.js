@@ -133,13 +133,32 @@ const orderSchema = new mongoose.Schema({
   serviceBooking: serviceBookingSchema,
   paymentMethod: {
     type: String,
-    enum: ['COD', 'ONLINE', 'WALLET'],
+    enum: ['COD', 'ONLINE', 'UPI', 'WALLET'],
     default: 'COD'
   },
   paymentStatus: {
     type: String,
     enum: ['PENDING', 'PAID', 'FAILED'],
     default: 'PENDING'
+  },
+  paymentGateway: {
+    type: String,
+    enum: ['RAZORPAY'],
+  },
+  paymentGatewayOrderId: {
+    type: String,
+    trim: true,
+  },
+  paymentGatewayPaymentId: {
+    type: String,
+    trim: true,
+  },
+  paymentGatewaySignature: {
+    type: String,
+    trim: true,
+  },
+  paidAt: {
+    type: Date,
   },
   orderStatus: {
     type: String,

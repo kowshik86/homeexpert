@@ -19,6 +19,7 @@ const getAuthState = () => {
 };
 
 const DELIVERY_FLOW = ['PLACED', 'CONFIRMED', 'PREPARING', 'OUT_FOR_DELIVERY', 'DELIVERED'];
+const ACTIVE_DELIVERY_STATUSES = ['PLACED', 'CONFIRMED', 'PREPARING', 'OUT_FOR_DELIVERY'];
 
 const getStatusBadgeClass = (status) => {
   if (status === 'OUT_FOR_DELIVERY') return 'bg-sky-100 text-sky-800 border-sky-200';
@@ -527,6 +528,13 @@ function DeliveryDashboard() {
     (order) => order.orderStatus === 'OUT_FOR_DELIVERY' && String(order.deliveryPersonId) === String(deliveryPersonId),
   ).length;
 
+  const activeAssignedDelivery = myOrders.find(
+    (order) =>
+      String(order.deliveryPersonId) === String(deliveryPersonId) &&
+      ACTIVE_DELIVERY_STATUSES.includes(order.orderStatus),
+  );
+  const hasActiveAssignedDelivery = Boolean(activeAssignedDelivery);
+
   const handleLogout = () => {
     localStorage.removeItem('workforceAuth');
     navigate('/work/login');
@@ -678,6 +686,7 @@ function DeliveryDashboard() {
                 const itemCount = Array.isArray(order.orderItems) ? order.orderItems.length : 0;
                 const isAssignedToMe = String(order.deliveryPersonId) === String(deliveryPersonId);
                 const isActive = selectedOrder?._id === order._id;
+                const canAccept = !hasActiveAssignedDelivery || isAssignedToMe;
 
                 return (
                   <div
@@ -716,9 +725,10 @@ function DeliveryDashboard() {
                           event.stopPropagation();
                           handleAcceptOrder(order._id);
                         }}
-                        className="mt-3 w-full rounded-lg bg-amber-500 text-white text-sm py-2 font-semibold hover:bg-amber-600"
+                        disabled={!canAccept}
+                        className="mt-3 w-full rounded-lg bg-amber-500 text-white text-sm py-2 font-semibold hover:bg-amber-600 disabled:cursor-not-allowed disabled:bg-amber-300"
                       >
-                        Accept Delivery
+                        {canAccept ? 'Accept Delivery' : 'Complete current delivery first'}
                       </button>
                     ) : null}
                   </div>
