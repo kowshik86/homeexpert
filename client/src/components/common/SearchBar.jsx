@@ -3,33 +3,38 @@ import { useNavigate } from 'react-router-dom';
 import { fetchAllShopGoods, fetchAllShopItems } from '../../services/api';
 
 const MAX_RECENT_SEARCHES = 5;
-const MAX_POPULAR_SEARCHES = 5;
-const MAX_TRENDING_SEARCHES = 5;
+const SEARCH_DEBOUNCE_MS = 180;
 
-// Predefined categories for the dropdown
-const SEARCH_CATEGORIES = [
-  { id: 'all', name: 'All Categories' },
-  { id: 'vegetables', name: 'Vegetables' },
-  { id: 'fruits', name: 'Fruits' },
-  { id: 'dairy', name: 'Dairy Products' },
-  { id: 'groceries', name: 'Groceries' },
-  { id: 'pulses', name: 'Pulses' }
-];
+const normalizeText = (value) => {
+  return String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .trim();
+};
 
 const SearchBar = () => {
   const [searchTerm, setSearchTerm] = useState('');
+  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState('');
   const [suggestions, setSuggestions] = useState([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [allProducts, setAllProducts] = useState([]);
   const [loading, setLoading] = useState(false);
   const [recentSearches, setRecentSearches] = useState([]);
-  const [popularSearches, setPopularSearches] = useState([]);
-  const [trendingSearches, setTrendingSearches] = useState([]);
   const [showRecent, setShowRecent] = useState(false);
-  const [selectedCategory, setSelectedCategory] = useState('all');
   const [isFocused, setIsFocused] = useState(false);
+  const [highlightedSuggestionIndex, setHighlightedSuggestionIndex] = useState(-1);
+  const [highlightedRecentIndex, setHighlightedRecentIndex] = useState(-1);
   const searchRef = useRef(null);
   const navigate = useNavigate();
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearchTerm(searchTerm);
+    }, SEARCH_DEBOUNCE_MS);
+
+    return () => clearTimeout(timer);
+  }, [searchTerm]);
 
   // Fetch all products and categories for search and load recent searches from localStorage
   useEffect(() => {
@@ -85,43 +90,12 @@ const SearchBar = () => {
       return categoryImages[category] || 'https://via.placeholder.com/40?text=Category';
     };
 
-    // Load recent, popular, and trending searches from localStorage
+    // Load recent searches from localStorage
     const loadSearchData = () => {
       try {
-        // Load recent searches
         const savedSearches = localStorage.getItem('recentSearches');
         if (savedSearches) {
           setRecentSearches(JSON.parse(savedSearches));
-        }
-
-        // Load popular searches
-        const savedPopular = localStorage.getItem('popularSearches');
-        if (savedPopular) {
-          setPopularSearches(JSON.parse(savedPopular));
-        } else {
-          // Default popular searches if none in localStorage
-          setPopularSearches([
-            { term: 'Tomatoes', count: 120 },
-            { term: 'Potatoes', count: 98 },
-            { term: 'Onions', count: 87 },
-            { term: 'Milk', count: 76 },
-            { term: 'Bread', count: 65 }
-          ]);
-        }
-
-        // Load trending searches
-        const savedTrending = localStorage.getItem('trendingSearches');
-        if (savedTrending) {
-          setTrendingSearches(JSON.parse(savedTrending));
-        } else {
-          // Default trending searches if none in localStorage
-          setTrendingSearches([
-            { term: 'Fresh Vegetables', isRising: true },
-            { term: 'Organic Fruits', isRising: false },
-            { term: 'Dairy Products', isRising: true },
-            { term: 'Whole Wheat Flour', isRising: false },
-            { term: 'Cooking Oil', isRising: true }
-          ]);
         }
       } catch (error) {
         console.error('Error loading search data:', error);
@@ -189,13 +163,14 @@ const SearchBar = () => {
 
   // Filter and rank items based on search term
   useEffect(() => {
-    if (searchTerm.trim() === '') {
+    if (debouncedSearchTerm.trim() === '') {
       setSuggestions([]);
       setShowSuggestions(false);
+      setHighlightedSuggestionIndex(-1);
       return;
     }
 
-    const searchTermLower = searchTerm.toLowerCase();
+    const searchTermLower = normalizeText(debouncedSearchTerm);
     const searchWords = searchTermLower.split(/\s+/).filter(word => word.length > 0);
 
     // Use all products without category filtering
@@ -216,22 +191,22 @@ const SearchBar = () => {
           let currentMatchType = 'none';
 
           // Exact match gets highest score
-          if (nameLower === searchTermLower) {
+          if (normalizeText(nameLower) === searchTermLower) {
             currentScore = 100;
             currentMatchType = 'exact';
           }
           // Starts with search term gets high score
-          else if (nameLower.startsWith(searchTermLower)) {
+          else if (normalizeText(nameLower).startsWith(searchTermLower)) {
             currentScore = 80 - (nameLower.length - searchTermLower.length) / 10;
             currentMatchType = 'startsWith';
           }
           // Contains search term gets medium score
-          else if (nameLower.includes(searchTermLower)) {
+          else if (normalizeText(nameLower).includes(searchTermLower)) {
             currentScore = 60 - nameLower.indexOf(searchTermLower) / 10;
             currentMatchType = 'contains';
           }
           // Word boundary match (e.g., "red onion" for "onion")
-          else if (nameLower.split(/\s+/).some(word => searchWords.includes(word))) {
+          else if (normalizeText(nameLower).split(/\s+/).some(word => searchWords.includes(word))) {
             currentScore = 70;
             currentMatchType = 'wordMatch';
           }
@@ -293,7 +268,7 @@ const SearchBar = () => {
 
           // Also check product description if available
           if (item.description && typeof item.description === 'string') {
-            const descriptionLower = item.description.toLowerCase();
+            const descriptionLower = normalizeText(item.description);
             if (descriptionLower.includes(searchTermLower)) {
               // Add a smaller score boost for description matches
               score = Math.max(score, 30);
@@ -306,7 +281,7 @@ const SearchBar = () => {
 
           // Check category match
           if (item.category && typeof item.category === 'string') {
-            const categoryLower = item.category.toLowerCase();
+            const categoryLower = normalizeText(item.category);
             if (categoryLower.includes(searchTermLower)) {
               // Add a smaller score boost for category matches
               score = Math.max(score, 20);
@@ -346,10 +321,13 @@ const SearchBar = () => {
 
     setSuggestions(scoredItems);
     setShowSuggestions(scoredItems.length > 0);
-  }, [searchTerm, allProducts, selectedCategory]);
+    setHighlightedSuggestionIndex(scoredItems.length > 0 ? 0 : -1);
+  }, [debouncedSearchTerm, allProducts]);
 
   const handleSearchChange = (e) => {
     setSearchTerm(e.target.value);
+    setHighlightedSuggestionIndex(-1);
+    setHighlightedRecentIndex(-1);
 
     // Close recent searches when typing
     if (e.target.value.trim() !== '') {
@@ -359,7 +337,48 @@ const SearchBar = () => {
     }
   };
 
-  // Save a search term to recent searches and update popular searches
+  const buildSearchUrl = (term, suggestionPool = suggestions) => {
+    const cleanedTerm = term.trim();
+    const searchParams = new URLSearchParams();
+    searchParams.append('search', cleanedTerm);
+    searchParams.append('exactMatch', 'false');
+
+    const searchTermLower = normalizeText(cleanedTerm);
+    const categoryNames = ['vegetables', 'fruits', 'pulses', 'dairy', 'groceries'];
+    const directCategoryMatch = categoryNames.find((cat) => {
+      const normalizedCategory = normalizeText(cat);
+      return normalizedCategory === searchTermLower || searchTermLower.includes(normalizedCategory);
+    });
+
+    if (directCategoryMatch) {
+      searchParams.append('category', directCategoryMatch);
+      return `/products?${searchParams.toString()}`;
+    }
+
+    const categoryMatches = suggestionPool.filter((item) => item._type === 'category');
+    if (categoryMatches.length > 0) {
+      searchParams.append('category', categoryMatches[0].name);
+    }
+
+    return `/products?${searchParams.toString()}`;
+  };
+
+  const runSearch = (term, suggestionPool = suggestions) => {
+    if (!term || !term.trim()) {
+      return;
+    }
+
+    const cleanedTerm = term.trim();
+    saveToRecentSearches(cleanedTerm);
+    navigate(buildSearchUrl(cleanedTerm, suggestionPool));
+    setShowSuggestions(false);
+    setShowRecent(false);
+    setSearchTerm('');
+    setHighlightedSuggestionIndex(-1);
+    setHighlightedRecentIndex(-1);
+  };
+
+  // Save a search term to recent searches
   const saveToRecentSearches = (term) => {
     if (!term) return;
 
@@ -371,34 +390,6 @@ const SearchBar = () => {
       const updated = [term, ...filtered].slice(0, MAX_RECENT_SEARCHES);
       // Save to localStorage
       localStorage.setItem('recentSearches', JSON.stringify(updated));
-      return updated;
-    });
-
-    // Update popular searches
-    setPopularSearches(prev => {
-      // Create a copy of the current popular searches
-      const popular = [...prev];
-
-      // Find if the term already exists
-      const existingIndex = popular.findIndex(item =>
-        item.term.toLowerCase() === term.toLowerCase()
-      );
-
-      if (existingIndex >= 0) {
-        // If exists, increment count
-        popular[existingIndex].count += 1;
-      } else {
-        // If new, add with count 1
-        popular.push({ term, count: 1 });
-      }
-
-      // Sort by count (descending) and limit to max
-      const updated = popular
-        .sort((a, b) => b.count - a.count)
-        .slice(0, MAX_POPULAR_SEARCHES);
-
-      // Save to localStorage
-      localStorage.setItem('popularSearches', JSON.stringify(updated));
       return updated;
     });
   };
@@ -428,115 +419,74 @@ const SearchBar = () => {
 
     setShowSuggestions(false);
     setSearchTerm('');
+    setHighlightedSuggestionIndex(-1);
   };
 
   const handleSearchSubmit = (e) => {
     e.preventDefault();
-    if (searchTerm.trim() !== '') {
-      // Save to recent searches
-      saveToRecentSearches(searchTerm.trim());
-
-      // Build search params
-      const searchParams = new URLSearchParams();
-      searchParams.append('search', searchTerm);
-      searchParams.append('exactMatch', 'false');
-
-      // Check if the search term directly matches a category name
-      const searchTermLower = searchTerm.trim().toLowerCase();
-      const categoryNames = ['vegetables', 'fruits', 'pulses', 'dairy', 'groceries'];
-      const directCategoryMatch = categoryNames.find(cat =>
-        cat.toLowerCase() === searchTermLower ||
-        searchTermLower.includes(cat.toLowerCase())
-      );
-
-      if (directCategoryMatch) {
-        // If search term directly matches a category, use that category
-        searchParams.append('category', directCategoryMatch);
-      } else {
-        // Otherwise check for category matches in suggestions
-        const categoryMatches = suggestions.filter(item => item._type === 'category');
-        if (categoryMatches.length > 0) {
-          // Use the first matched category
-          const categoryName = categoryMatches[0].name;
-          searchParams.append('category', categoryName);
-        }
-      }
-
-      // Navigate to products page with search parameters
-      navigate(`/products?${searchParams.toString()}`);
-      setShowSuggestions(false);
-    }
+    runSearch(searchTerm, suggestions);
   };
 
   const handleShowAllResults = () => {
-    if (searchTerm.trim() !== '') {
-      // Save to recent searches
-      saveToRecentSearches(searchTerm.trim());
-
-      // Build search params
-      const searchParams = new URLSearchParams();
-      searchParams.append('search', searchTerm);
-      searchParams.append('exactMatch', 'false');
-
-      // Check if the search term directly matches a category name
-      const searchTermLower = searchTerm.trim().toLowerCase();
-      const categoryNames = ['vegetables', 'fruits', 'pulses', 'dairy', 'groceries'];
-      const directCategoryMatch = categoryNames.find(cat =>
-        cat.toLowerCase() === searchTermLower ||
-        searchTermLower.includes(cat.toLowerCase())
-      );
-
-      if (directCategoryMatch) {
-        // If search term directly matches a category, use that category
-        searchParams.append('category', directCategoryMatch);
-      } else {
-        // Otherwise check for category matches in suggestions
-        const categoryMatches = suggestions.filter(item => item._type === 'category');
-        if (categoryMatches.length > 0) {
-          // Use the first matched category
-          const categoryName = categoryMatches[0].name;
-          searchParams.append('category', categoryName);
-        }
-      }
-
-      // Navigate to products page with search parameters
-      navigate(`/products?${searchParams.toString()}`);
-      setShowSuggestions(false);
-    }
+    runSearch(searchTerm, suggestions);
   };
 
   const handleRecentSearchClick = (term) => {
-    // Build search params
-    const searchParams = new URLSearchParams();
-    searchParams.append('search', term);
-    searchParams.append('exactMatch', 'false');
-
-    // Check if the term directly matches a category name
-    const termLower = term.trim().toLowerCase();
-    const categoryNames = ['vegetables', 'fruits', 'pulses', 'dairy', 'groceries'];
-    const directCategoryMatch = categoryNames.find(cat =>
-      cat.toLowerCase() === termLower ||
-      termLower.includes(cat.toLowerCase())
+    const matchingCategories = allProducts.filter(item =>
+      item._type === 'category' &&
+      normalizeText(item.name).includes(normalizeText(term))
     );
 
-    if (directCategoryMatch) {
-      // If term directly matches a category, use that category
-      searchParams.append('category', directCategoryMatch);
-    } else {
-      // Otherwise search for matching categories in products
-      const matchingCategories = allProducts.filter(item =>
-        item._type === 'category' &&
-        item.name.toLowerCase().includes(term.toLowerCase())
-      );
+    runSearch(term, matchingCategories);
+  };
 
-      if (matchingCategories.length > 0) {
-        searchParams.append('category', matchingCategories[0].name);
-      }
+  const handleInputKeyDown = (event) => {
+    if (event.key === 'Escape') {
+      setShowSuggestions(false);
+      setShowRecent(false);
+      setHighlightedSuggestionIndex(-1);
+      setHighlightedRecentIndex(-1);
+      return;
     }
 
-    // Navigate to products page with the recent search term
-    navigate(`/products?${searchParams.toString()}`);
-    setShowRecent(false);
+    if (showSuggestions && suggestions.length > 0) {
+      if (event.key === 'ArrowDown') {
+        event.preventDefault();
+        setHighlightedSuggestionIndex((prev) => (prev + 1) % suggestions.length);
+        return;
+      }
+
+      if (event.key === 'ArrowUp') {
+        event.preventDefault();
+        setHighlightedSuggestionIndex((prev) => (prev <= 0 ? suggestions.length - 1 : prev - 1));
+        return;
+      }
+
+      if (event.key === 'Enter' && highlightedSuggestionIndex >= 0) {
+        event.preventDefault();
+        handleSuggestionClick(suggestions[highlightedSuggestionIndex]);
+      }
+      return;
+    }
+
+    if (showRecent && recentSearches.length > 0) {
+      if (event.key === 'ArrowDown') {
+        event.preventDefault();
+        setHighlightedRecentIndex((prev) => (prev + 1) % recentSearches.length);
+        return;
+      }
+
+      if (event.key === 'ArrowUp') {
+        event.preventDefault();
+        setHighlightedRecentIndex((prev) => (prev <= 0 ? recentSearches.length - 1 : prev - 1));
+        return;
+      }
+
+      if (event.key === 'Enter' && highlightedRecentIndex >= 0) {
+        event.preventDefault();
+        handleRecentSearchClick(recentSearches[highlightedRecentIndex]);
+      }
+    }
   };
 
   return (
@@ -548,23 +498,31 @@ const SearchBar = () => {
           <div className="flex-1 relative">
             <input
               type="text"
-              placeholder="Search products..."
+              placeholder="Search fruits, vegetables, dairy..."
               className={`w-full h-12 px-4 py-2 text-base focus:outline-none ${isFocused ? 'ring-2 ring-[#8a4af3]' : ''}`}
               style={{ fontFamily: 'Gilroy, Arial, Helvetica Neue, sans-serif' }}
               value={searchTerm}
               onChange={handleSearchChange}
+              onKeyDown={handleInputKeyDown}
               onFocus={() => {
                 setIsFocused(true);
                 if (searchTerm.trim() !== '' && suggestions.length > 0) {
                   setShowSuggestions(true);
-                } else if (searchTerm.trim() === '' && (recentSearches.length > 0 || trendingSearches.length > 0)) {
+                  setHighlightedSuggestionIndex(0);
+                } else if (searchTerm.trim() === '' && recentSearches.length > 0) {
                   setShowRecent(true);
+                  setHighlightedRecentIndex(0);
                 }
               }}
               onBlur={() => {
                 setIsFocused(false);
               }}
             />
+            {!searchTerm ? (
+              <span className="absolute right-3 top-1/2 transform -translate-y-1/2 text-[11px] text-gray-400 pointer-events-none">
+                Press Enter
+              </span>
+            ) : null}
             {searchTerm && (
               <button
                 type="button"
@@ -599,11 +557,11 @@ const SearchBar = () => {
         </div>
       </form>
 
-      {/* Recent and trending searches dropdown */}
-      {showRecent && searchTerm.trim() === '' && (recentSearches.length > 0 || trendingSearches.length > 0) && (
+      {/* Recent searches dropdown */}
+      {showRecent && searchTerm.trim() === '' && recentSearches.length > 0 && (
         <div className="absolute z-10 w-full mt-2 bg-white rounded-md shadow-lg border border-gray-200 overflow-hidden">
           {recentSearches.length > 0 && (
-            <div className="py-2 px-3 border-b border-gray-200">
+            <div className="py-2 px-3">
               <div className="flex justify-between items-center mb-2">
                 <h3 className="text-sm font-medium text-gray-700">Recent Searches</h3>
                 <button
@@ -620,7 +578,7 @@ const SearchBar = () => {
                 {recentSearches.map((term, index) => (
                   <li
                     key={`recent-${index}`}
-                    className="flex items-center justify-between py-1 px-2 text-sm text-gray-700 hover:bg-gray-100 rounded cursor-pointer"
+                    className={`flex items-center justify-between py-1 px-2 text-sm text-gray-700 hover:bg-gray-100 rounded cursor-pointer ${highlightedRecentIndex === index ? 'bg-gray-100' : ''}`}
                     onClick={() => handleRecentSearchClick(term)}
                   >
                     <div className="flex items-center">
@@ -648,33 +606,6 @@ const SearchBar = () => {
               </ul>
             </div>
           )}
-
-          {popularSearches.length > 0 && (
-            <div className="py-2 px-3 border-b border-gray-200">
-              <div className="flex justify-between items-center mb-2">
-                <h3 className="text-sm font-medium text-gray-700">Popular Searches</h3>
-              </div>
-              <ul className="space-y-1">
-                {popularSearches.map((item, index) => (
-                  <li
-                    key={`popular-${index}`}
-                    className="flex items-center justify-between py-1 px-2 text-sm text-gray-700 hover:bg-gray-100 rounded cursor-pointer"
-                    onClick={() => handleRecentSearchClick(item.term)}
-                  >
-                    <div className="flex items-center">
-                      <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-green-500 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
-                      </svg>
-                      <span className="font-medium">{item.term}</span>
-                    </div>
-                    <span className="text-xs text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded-full">{item.count}</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-
-
         </div>
       )}
 
@@ -710,7 +641,7 @@ const SearchBar = () => {
                         <div className="flex items-center">
                           <span className="text-gray-600">Search for </span>
                           <span className="font-medium mx-1">"{searchTerm}"</span>
-                          <span className="text-gray-600"> in {SEARCH_CATEGORIES.find(c => c.id === selectedCategory)?.name || 'All Categories'}</span>
+                              <span className="text-gray-600"> across all categories</span>
                         </div>
                         <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-5.197-5.197M16.803 15.803A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
@@ -757,7 +688,7 @@ const SearchBar = () => {
                         return (
                           <li
                             key={`category-${index}`}
-                            className={`flex items-center py-2 px-2 text-sm hover:bg-gray-100 rounded cursor-pointer ${category._matchType === 'exact' ? 'bg-gray-50' : ''}`}
+                            className={`flex items-center py-2 px-2 text-sm hover:bg-gray-100 rounded cursor-pointer ${category._matchType === 'exact' ? 'bg-gray-50' : ''} ${highlightedSuggestionIndex === index ? 'bg-gray-100' : ''}`}
                             onClick={() => handleSuggestionClick(category)}
                           >
                             <div className="flex-shrink-0 w-10 h-10 mr-3">
@@ -803,6 +734,8 @@ const SearchBar = () => {
                         </div>
                         <ul className="space-y-2">
                           {categoryProducts.map((product, index) => {
+                            const productPosition = products.indexOf(product);
+                            const suggestionIndex = categories.length + (productPosition >= 0 ? productPosition : index);
                             // Determine which name to show as primary based on match
                             let primaryName = '';
                             let alternateNames = [];
@@ -863,7 +796,7 @@ const SearchBar = () => {
                             return (
                               <li
                                 key={product._id || `product-${category}-${index}`}
-                                className={`flex py-2 px-2 text-sm hover:bg-gray-100 rounded cursor-pointer ${product._matchType === 'exact' ? 'bg-gray-50' : ''}`}
+                                className={`flex py-2 px-2 text-sm hover:bg-gray-100 rounded cursor-pointer ${product._matchType === 'exact' ? 'bg-gray-50' : ''} ${highlightedSuggestionIndex === suggestionIndex ? 'bg-gray-100' : ''}`}
                                 onClick={() => handleSuggestionClick(product)}
                               >
                                 <div className="flex-shrink-0 w-12 h-12 mr-3">

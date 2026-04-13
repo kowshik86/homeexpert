@@ -11,6 +11,7 @@ const Razorpay = require('razorpay');
 const ACTIVE_DELIVERY_STATUSES = ['PLACED', 'CONFIRMED', 'PREPARING', 'OUT_FOR_DELIVERY'];
 const CANCELLABLE_STATUSES = ['PLACED', 'CONFIRMED', 'PREPARING'];
 const WORKER_ACTIVE_ASSIGNMENT_STATUSES = ['CONFIRMED', 'PREPARING', 'OUT_FOR_DELIVERY'];
+const DEFAULT_SERVICE_DURATION_MINS = 60;
 const SERVICE_MATCHING_KEYWORDS = {
   cleaning: ['cleaning', 'home cleaning', 'deep cleaning', 'sofa cleaning'],
   appliance: ['appliance', 'ac', 'fridge', 'washing machine', 'repair'],
@@ -70,6 +71,40 @@ const matchWorkerForBooking = async (serviceBooking = {}) => {
   });
 
   return matchedWorker || workers[0] || null;
+};
+
+const getBookingWindow = (booking = {}) => {
+  const scheduledAt = booking?.serviceBooking?.scheduledFor ? new Date(booking.serviceBooking.scheduledFor) : null;
+  if (!scheduledAt || Number.isNaN(scheduledAt.getTime())) {
+    return null;
+  }
+
+  const durationMins = Math.max(1, Number(booking?.serviceBooking?.estimatedDurationMins || DEFAULT_SERVICE_DURATION_MINS));
+  const startTime = scheduledAt.getTime();
+  const endTime = startTime + (durationMins * 60 * 1000);
+
+  return { startTime, endTime };
+};
+
+const hasTimeOverlap = (firstWindow, secondWindow) => {
+  return firstWindow.startTime < secondWindow.endTime && secondWindow.startTime < firstWindow.endTime;
+};
+
+const hasOverlappingWorkerBooking = ({ targetOrder, activeBookings }) => {
+  const targetWindow = getBookingWindow(targetOrder);
+  if (!targetWindow) {
+    // If schedule is missing, be conservative and avoid over-booking when another active booking exists.
+    return activeBookings.length > 0;
+  }
+
+  return activeBookings.some((booking) => {
+    const existingWindow = getBookingWindow(booking);
+    if (!existingWindow) {
+      return true;
+    }
+
+    return hasTimeOverlap(targetWindow, existingWindow);
+  });
 };
 
 orderApp.get('/payment/config', expressAsyncHandler(async (req, res) => {
@@ -443,16 +478,26 @@ orderApp.patch('/worker/order/:orderId/status', expressAsyncHandler(async (req, 
       return res.status(400).send({ message: 'Invalid workerId' });
     }
 
+    const targetOrder = await orderModel.findById(orderId);
+    if (!targetOrder) {
+      return res.status(404).send({ message: 'Order not found' });
+    }
+
     if (workerId && WORKER_ACTIVE_ASSIGNMENT_STATUSES.includes(orderStatus)) {
-      const activeWorkerAssignment = await orderModel.findOne({
+      const activeWorkerAssignments = await orderModel.find({
         assignedWorkerId: workerId,
         orderStatus: { $in: WORKER_ACTIVE_ASSIGNMENT_STATUSES },
         _id: { $ne: orderId },
       });
 
-      if (activeWorkerAssignment) {
+      const overlapsExistingBooking = hasOverlappingWorkerBooking({
+        targetOrder,
+        activeBookings: activeWorkerAssignments,
+      });
+
+      if (overlapsExistingBooking) {
         return res.status(409).send({
-          message: 'You already have an active service booking. Complete it before accepting another lead.',
+          message: 'This booking overlaps with another active booking in your schedule.',
         });
       }
     }

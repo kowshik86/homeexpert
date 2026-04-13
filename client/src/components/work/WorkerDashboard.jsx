@@ -73,6 +73,25 @@ const formatRelativeBucket = (dateValue) => {
 
 const getSlotLabel = (booking) => booking.serviceBooking?.timeSlot || formatBookingDate(booking.serviceBooking?.scheduledFor || booking.createdAt);
 
+const DEFAULT_BOOKING_DURATION_MINS = 60;
+
+const getBookingWindow = (booking) => {
+  const scheduledFor = booking?.serviceBooking?.scheduledFor ? new Date(booking.serviceBooking.scheduledFor) : null;
+  if (!scheduledFor || Number.isNaN(scheduledFor.getTime())) {
+    return null;
+  }
+
+  const durationMins = Math.max(1, Number(booking?.serviceBooking?.estimatedDurationMins || DEFAULT_BOOKING_DURATION_MINS));
+  const startTime = scheduledFor.getTime();
+  const endTime = startTime + (durationMins * 60 * 1000);
+
+  return { startTime, endTime };
+};
+
+const isOverlappingWindow = (firstWindow, secondWindow) => {
+  return firstWindow.startTime < secondWindow.endTime && secondWindow.startTime < firstWindow.endTime;
+};
+
 function WorkerDashboard() {
   const navigate = useNavigate();
   const authState = getAuthState();
@@ -163,6 +182,22 @@ function WorkerDashboard() {
   }, [bookingRows, completedBookings.length]);
 
   const hasActiveAssignedBooking = scheduleBookings.length > 0;
+
+  const isLeadOverlappingWithSchedule = (leadBooking) => {
+    const leadWindow = getBookingWindow(leadBooking);
+    if (!leadWindow) {
+      return hasActiveAssignedBooking;
+    }
+
+    return scheduleBookings.some((scheduledBooking) => {
+      const scheduledWindow = getBookingWindow(scheduledBooking);
+      if (!scheduledWindow) {
+        return true;
+      }
+
+      return isOverlappingWindow(leadWindow, scheduledWindow);
+    });
+  };
 
   const serviceMix = useMemo(() => {
     const counts = {};
@@ -381,7 +416,7 @@ function WorkerDashboard() {
     <div className="space-y-4">
       {hasActiveAssignedBooking ? (
         <div className="rounded-2xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
-          You already have an active booking. Complete it before accepting another lead.
+          You can accept another lead only if it does not overlap with your active schedule.
         </div>
       ) : null}
 
@@ -392,6 +427,11 @@ function WorkerDashboard() {
       ) : (
         leads.map((booking) => (
           <div key={booking._id} className="rounded-2xl border border-slate-200 bg-white p-4">
+            {isLeadOverlappingWithSchedule(booking) ? (
+              <div className="mb-3 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700">
+                Schedule overlap: this lead conflicts with an already accepted booking.
+              </div>
+            ) : null}
             <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
               <div className="flex gap-4">
                 <img src={getServiceImage(booking)} alt={booking.serviceBooking?.serviceName || 'Service'} className="h-20 w-20 rounded-xl object-cover border border-slate-200" onError={handleImageError} />
@@ -424,10 +464,10 @@ function WorkerDashboard() {
               <button
                 type="button"
                 onClick={() => handleLeadAction(booking._id, 'accepted')}
-                disabled={hasActiveAssignedBooking}
+                disabled={isLeadOverlappingWithSchedule(booking)}
                 className="rounded-lg bg-emerald-600 px-3 py-2 text-xs font-semibold text-white hover:bg-emerald-500 disabled:cursor-not-allowed disabled:bg-emerald-300"
               >
-                {hasActiveAssignedBooking ? 'Complete current booking first' : 'Accept Lead'}
+                {isLeadOverlappingWithSchedule(booking) ? 'Overlaps existing booking' : 'Accept Lead'}
               </button>
             </div>
           </div>

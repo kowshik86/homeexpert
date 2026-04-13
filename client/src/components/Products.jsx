@@ -5,6 +5,59 @@ import ProductCard from './common/ProductCard';
 import ProductSkeleton from './common/ProductSkeleton';
 import CategoryFilter from './common/CategoryFilter';
 
+const normalizeText = (value) => {
+  return String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .trim();
+};
+
+const scoreProductMatch = (product, searchTerm) => {
+  const normalizedSearch = normalizeText(searchTerm);
+  if (!normalizedSearch) {
+    return 0;
+  }
+
+  const names = Array.isArray(product.name) ? product.name : [product.name];
+  const normalizedNames = names.map((name) => normalizeText(name)).filter(Boolean);
+  const normalizedCategory = normalizeText(product.category);
+  const normalizedDescription = normalizeText(product.description);
+
+  let score = 0;
+
+  normalizedNames.forEach((name) => {
+    if (name === normalizedSearch) {
+      score = Math.max(score, 100);
+      return;
+    }
+
+    if (name.startsWith(normalizedSearch)) {
+      score = Math.max(score, 85);
+      return;
+    }
+
+    if (name.includes(normalizedSearch)) {
+      score = Math.max(score, 70);
+    }
+
+    const wordMatch = name.split(/\s+/).some((word) => word.startsWith(normalizedSearch));
+    if (wordMatch) {
+      score = Math.max(score, 60);
+    }
+  });
+
+  if (normalizedCategory && normalizedCategory.includes(normalizedSearch)) {
+    score = Math.max(score, 45);
+  }
+
+  if (normalizedDescription && normalizedDescription.includes(normalizedSearch)) {
+    score = Math.max(score, 30);
+  }
+
+  return score;
+};
+
 const Products = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const categoryParam = searchParams.get('category') || 'all';
@@ -142,42 +195,30 @@ const Products = () => {
 
     // Apply search filter if search term exists
     if (searchTerm) {
-      const searchTermLower = searchTerm.toLowerCase();
-      result = result.filter(product => {
-        // Check if product category matches search term (for category searches)
-        if (product.category && product.category.toLowerCase() === searchTermLower) {
-          return true;
-        }
+      const normalizedSearch = normalizeText(searchTerm);
 
-        // Handle array of names
-        if (Array.isArray(product.name)) {
-          if (isExactMatch) {
-            // For exact match, check if any name exactly matches the search term
-            return product.name.some(name =>
-              name.toLowerCase() === searchTermLower
-            );
-          } else {
-            // For partial match, check if any name includes the search term
-            return product.name.some(name =>
-              name.toLowerCase().includes(searchTermLower)
-            );
+      result = result
+        .map((product) => {
+          const score = scoreProductMatch(product, normalizedSearch);
+          const exactNameMatch = (Array.isArray(product.name) ? product.name : [product.name])
+            .map((name) => normalizeText(name))
+            .some((name) => name === normalizedSearch);
+
+          if (isExactMatch && !exactNameMatch) {
+            return null;
           }
-        } else if (typeof product.name === 'string') {
-          // Handle string name
-          if (isExactMatch) {
-            return product.name.toLowerCase() === searchTermLower;
-          } else {
-            return product.name.toLowerCase().includes(searchTermLower);
+
+          if (!isExactMatch && score <= 0) {
+            return null;
           }
-        }
 
-        // Also check description for matches
-        if (product.description && typeof product.description === 'string') {
-          return product.description.toLowerCase().includes(searchTermLower);
-        }
-
-        return false;
-      });
+          return {
+            ...product,
+            _searchScore: exactNameMatch ? 100 : score,
+          };
+        })
+        .filter(Boolean)
+        .sort((a, b) => Number(b._searchScore || 0) - Number(a._searchScore || 0));
     }
 
     // Apply price filter

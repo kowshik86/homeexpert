@@ -87,6 +87,7 @@ function Header() {
   }, [currentUser, workforceAuth]);
 
   const showWorkLinkOnHome = isHomePath && !activeAccount;
+  const ordersPath = isServicesPath ? '/account?tab=orders&scope=services' : '/account?tab=orders';
 
   const showCartLink = showConsumerActions && !isHomePath && !isServicesPath && !isAccountOrdersPath && (!activeAccount || !activeAccount.isWorkforce);
   const showOrdersLink = showConsumerActions && (isServicesPath || isAccountOrdersPath) && (!activeAccount || !activeAccount.isWorkforce);
@@ -286,7 +287,7 @@ function Header() {
               </li>
             ) : showOrdersLink ? (
               <li className="text-cement font-[600] flex items-center space-x-1 cursor-pointer">
-                <Link to="/account?tab=orders" className="text-primary-custom cursor-pointer flex items-center transition-all duration-300 hover:text-primary-custom hover:scale-105 nav-link">
+                <Link to={ordersPath} className="text-primary-custom cursor-pointer flex items-center transition-all duration-300 hover:text-primary-custom hover:scale-105 nav-link">
                   <div className="relative flex items-center">
                     <div className="relative">
                       <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -403,7 +404,7 @@ function Header() {
               </li>
             ) : showOrdersLink ? (
               <li className="text-cement font-[600] flex items-center space-x-1 cursor-pointer">
-                <Link to="/account?tab=orders" onClick={() => setMobileMenuOpen(false)} className="text-primary-custom cursor-pointer flex items-center transition-all duration-300 hover:text-primary-custom hover:scale-105 nav-link">
+                <Link to={ordersPath} onClick={() => setMobileMenuOpen(false)} className="text-primary-custom cursor-pointer flex items-center transition-all duration-300 hover:text-primary-custom hover:scale-105 nav-link">
                   <div className="relative flex items-center">
                     <div className="relative">
                       <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">

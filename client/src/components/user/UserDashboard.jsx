@@ -10,8 +10,18 @@ import { toast } from 'react-toastify';
 const ACTIVE_ORDER_STATUSES = ['PLACED', 'CONFIRMED', 'PREPARING', 'OUT_FOR_DELIVERY'];
 const CLOSED_ORDER_STATUSES = ['DELIVERED', 'CANCELLED'];
 const FALLBACK_GROCERY_IMAGE = 'https://images.unsplash.com/photo-1542838132-92c53300491e?auto=format&fit=crop&w=1200&q=80';
+const FALLBACK_SERVICE_IMAGE = 'https://images.unsplash.com/photo-1581578731548-c64695cc6952?auto=format&fit=crop&w=1200&q=80';
+const APPLIANCE_REPAIR_IMAGE = 'https://images.pexels.com/photos/5691664/pexels-photo-5691664.jpeg?auto=compress&cs=tinysrgb&w=1200';
+
+const SERVICE_IMAGE_BY_SLUG = {
+  cleaning: 'https://images.unsplash.com/photo-1581578731548-c64695cc6952?auto=format&fit=crop&w=1200&q=80',
+  'appliance-repair': APPLIANCE_REPAIR_IMAGE,
+  plumbing: 'https://images.unsplash.com/photo-1621905252507-b35492cc74b4?auto=format&fit=crop&w=1200&q=80',
+  electrical: 'https://images.unsplash.com/photo-1621905251918-48416bd8575a?auto=format&fit=crop&w=1200&q=80',
+};
 
 const isGroceryOrder = (order) => order?.bookingType !== 'service';
+const isServiceOrder = (order) => order?.bookingType === 'service';
 
 const getOrderItems = (order) => (Array.isArray(order?.orderItems) ? order.orderItems : []);
 
@@ -62,6 +72,41 @@ const getOrderPreviewImage = (order) => {
   return /^https?:\/\//i.test(imageUrl) ? imageUrl : FALLBACK_GROCERY_IMAGE;
 };
 
+const getServiceImageByMeta = (serviceSlug, serviceName) => {
+  if (serviceSlug && SERVICE_IMAGE_BY_SLUG[serviceSlug]) {
+    return SERVICE_IMAGE_BY_SLUG[serviceSlug];
+  }
+
+  const normalizedName = String(serviceName || '').toLowerCase();
+  if (normalizedName.includes('appliance') || normalizedName.includes('repair')) {
+    return SERVICE_IMAGE_BY_SLUG['appliance-repair'];
+  }
+  if (normalizedName.includes('plumb')) {
+    return SERVICE_IMAGE_BY_SLUG.plumbing;
+  }
+  if (normalizedName.includes('electri')) {
+    return SERVICE_IMAGE_BY_SLUG.electrical;
+  }
+  if (normalizedName.includes('clean')) {
+    return SERVICE_IMAGE_BY_SLUG.cleaning;
+  }
+
+  return FALLBACK_SERVICE_IMAGE;
+};
+
+const getServiceImageFromOrder = (order) => {
+  const canonicalImage = getServiceImageByMeta(order?.serviceBooking?.serviceSlug, order?.serviceBooking?.serviceName);
+  if (canonicalImage !== FALLBACK_SERVICE_IMAGE) {
+    return canonicalImage;
+  }
+
+  const storedImage = typeof order?.serviceBooking?.serviceImage === 'string'
+    ? order.serviceBooking.serviceImage.trim()
+    : '';
+
+  return /^https?:\/\//i.test(storedImage) ? storedImage : FALLBACK_SERVICE_IMAGE;
+};
+
 const formatOrderStatus = (status) => {
   return (status || 'PLACED')
     .toLowerCase()
@@ -94,6 +139,10 @@ const UserDashboard = () => {
     const allowedTabs = ['profile', 'orders', 'addresses', 'favorites'];
     return tab && allowedTabs.includes(tab) ? tab : 'profile';
   }, [location.search]);
+  const urlOrderScope = useMemo(() => {
+    const params = new URLSearchParams(location.search);
+    return params.get('scope') === 'services' ? 'services' : 'groceries';
+  }, [location.search]);
   const [activeTab, setActiveTab] = useState(urlTab);
   const [activeOrder, setActiveOrder] = useState(null);
   const [loadingActiveOrder, setLoadingActiveOrder] = useState(true);
@@ -103,6 +152,8 @@ const UserDashboard = () => {
   const [orderSearch, setOrderSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('ALL');
   const [expandedOrderId, setExpandedOrderId] = useState('');
+
+  const isServiceScope = activeTab === 'orders' && urlOrderScope === 'services';
 
   useEffect(() => {
     // Redirect to home if not logged in and not viewing the orders page
@@ -180,11 +231,11 @@ const UserDashboard = () => {
 
         const data = await response.json();
         const allOrders = Array.isArray(data.payload) ? data.payload : [];
-        const onlyGroceryOrders = allOrders
-          .filter((order) => isGroceryOrder(order))
+        const scopedOrders = allOrders
+          .filter((order) => (urlOrderScope === 'services' ? isServiceOrder(order) : isGroceryOrder(order)))
           .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
 
-        setGroceryOrders(onlyGroceryOrders);
+        setGroceryOrders(scopedOrders);
       } catch (error) {
         setGroceryOrdersError(error.message || 'Failed to fetch grocery orders');
       } finally {
@@ -193,7 +244,7 @@ const UserDashboard = () => {
     };
 
     fetchGroceryOrders();
-  }, [activeTab, currentUser]);
+  }, [activeTab, currentUser, urlOrderScope]);
 
   const orderSummaryLabel = useMemo(() => {
     if (!activeOrder) {
@@ -223,11 +274,16 @@ const UserDashboard = () => {
       }
 
       const orderIdPart = String(order?._id || '').toLowerCase();
+      const serviceMeta = [
+        order?.serviceBooking?.serviceName,
+        order?.serviceBooking?.packageName,
+        order?.serviceBooking?.serviceSlug,
+      ].map((value) => String(value || '').toLowerCase()).join(' ');
       const itemNames = getOrderItems(order)
         .map((item) => String(item?.name || '').toLowerCase())
         .join(' ');
 
-      return orderIdPart.includes(normalizedSearch) || itemNames.includes(normalizedSearch);
+      return orderIdPart.includes(normalizedSearch) || itemNames.includes(normalizedSearch) || serviceMeta.includes(normalizedSearch);
     });
   }, [groceryOrders, orderSearch, statusFilter]);
 
@@ -240,6 +296,11 @@ const UserDashboard = () => {
   }, [groceryOrders]);
 
   const handleQuickReorder = (order) => {
+    if (isServiceScope) {
+      navigate('/services');
+      return;
+    }
+
     const items = getOrderItems(order);
 
     if (!items.length) {
@@ -307,23 +368,27 @@ const UserDashboard = () => {
           <section className="rounded-[32px] border border-slate-200 bg-white p-6 md:p-8 shadow-[0_24px_60px_rgba(15,23,42,0.08)]">
             <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-4">
               <div>
-                <p className="text-xs uppercase tracking-[0.2em] text-primary-custom font-bold">Previous Grocery Orders</p>
-                <h1 className="text-3xl md:text-4xl font-black text-slate-900 mt-2">Your grocery orders, organized.</h1>
-                <p className="text-sm text-slate-600 mt-2 max-w-2xl">See exact items, track live progress, reorder in one tap, and download invoices anytime.</p>
+                <p className="text-xs uppercase tracking-[0.2em] text-primary-custom font-bold">{isServiceScope ? 'Previous Service Orders' : 'Previous Grocery Orders'}</p>
+                <h1 className="text-3xl md:text-4xl font-black text-slate-900 mt-2">{isServiceScope ? 'Your service bookings, organized.' : 'Your grocery orders, organized.'}</h1>
+                <p className="text-sm text-slate-600 mt-2 max-w-2xl">
+                  {isServiceScope
+                    ? 'Review booked services, schedule details, status, and invoices in one place.'
+                    : 'See exact items, track live progress, reorder in one tap, and download invoices anytime.'}
+                </p>
               </div>
               <div className="flex flex-wrap gap-3">
                 <button
-                  onClick={() => navigate('/products')}
+                  onClick={() => navigate(isServiceScope ? '/services' : '/products')}
                   className="inline-flex items-center rounded-full bg-slate-900 px-5 py-3 text-sm font-semibold text-white hover:bg-slate-800"
                 >
-                  Continue Shopping
+                  {isServiceScope ? 'Book Service' : 'Continue Shopping'}
                 </button>
               </div>
             </div>
 
             {!currentUser ? (
               <div className="mt-6 rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-6 text-center">
-                <p className="text-sm text-slate-600">Sign in to see your grocery orders.</p>
+                <p className="text-sm text-slate-600">Sign in to see your {isServiceScope ? 'service orders' : 'grocery orders'}.</p>
                 <button
                   type="button"
                   onClick={() => openAuthModal('login')}
@@ -344,17 +409,21 @@ const UserDashboard = () => {
               </div>
             ) : groceryOrders.length === 0 ? (
               <div className="mt-6 rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-6 text-center">
-                <p className="text-sm text-slate-600">No grocery orders yet. Place your first order and it will appear here.</p>
+                <p className="text-sm text-slate-600">
+                  {isServiceScope
+                    ? 'No service orders yet. Book your first service and it will appear here.'
+                    : 'No grocery orders yet. Place your first order and it will appear here.'}
+                </p>
               </div>
             ) : (
               <div className="mt-6 space-y-5">
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                   <div className="rounded-2xl border border-cyan-100 bg-cyan-50 p-4">
-                    <p className="text-xs uppercase tracking-wide text-cyan-700">Active Orders</p>
+                    <p className="text-xs uppercase tracking-wide text-cyan-700">{isServiceScope ? 'Active Bookings' : 'Active Orders'}</p>
                     <p className="text-2xl font-black text-cyan-900 mt-1">{orderMetrics.activeCount}</p>
                   </div>
                   <div className="rounded-2xl border border-emerald-100 bg-emerald-50 p-4">
-                    <p className="text-xs uppercase tracking-wide text-emerald-700">Delivered Orders</p>
+                    <p className="text-xs uppercase tracking-wide text-emerald-700">{isServiceScope ? 'Completed Bookings' : 'Delivered Orders'}</p>
                     <p className="text-2xl font-black text-emerald-900 mt-1">{orderMetrics.deliveredCount}</p>
                   </div>
                   <div className="rounded-2xl border border-amber-100 bg-amber-50 p-4">
@@ -369,7 +438,7 @@ const UserDashboard = () => {
                       type="text"
                       value={orderSearch}
                       onChange={(event) => setOrderSearch(event.target.value)}
-                      placeholder="Search by order ID or item name"
+                      placeholder={isServiceScope ? 'Search by order ID or service name' : 'Search by order ID or item name'}
                       className="w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-700 outline-none focus:border-primary-custom"
                     />
                   </div>
@@ -394,9 +463,10 @@ const UserDashboard = () => {
                   <div className="space-y-4">
                     {filteredGroceryOrders.map((order) => {
                       const items = getOrderItems(order);
-                      const previewImage = getOrderPreviewImage(order);
+                      const previewImage = isServiceScope ? getServiceImageFromOrder(order) : getOrderPreviewImage(order);
                       const itemCount = getOrderItemCount(order);
                       const isExpanded = expandedOrderId === order._id;
+                      const serviceName = order?.serviceBooking?.serviceName || 'Home Service';
 
                       return (
                         <article key={order._id} className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
@@ -405,12 +475,12 @@ const UserDashboard = () => {
                               <div className="flex gap-4">
                                 <img
                                   src={previewImage}
-                                  alt={items[0]?.name || 'Grocery order'}
+                                  alt={isServiceScope ? serviceName : (items[0]?.name || 'Grocery order')}
                                   className="h-20 w-20 rounded-xl object-cover border border-slate-200"
                                   onError={(event) => {
                                     const imageElement = event.currentTarget;
                                     imageElement.onerror = null;
-                                    imageElement.src = FALLBACK_GROCERY_IMAGE;
+                                    imageElement.src = isServiceScope ? FALLBACK_SERVICE_IMAGE : FALLBACK_GROCERY_IMAGE;
                                   }}
                                 />
 
@@ -429,7 +499,11 @@ const UserDashboard = () => {
                                   </div>
 
                                   <p className="text-xs text-slate-500 mt-1">Placed on {formatOrderDate(order.createdAt)}</p>
-                                  <p className="text-xs text-slate-500 mt-1">{itemCount} item{itemCount === 1 ? '' : 's'} • {getEtaText(order)}</p>
+                                  <p className="text-xs text-slate-500 mt-1">
+                                    {isServiceScope
+                                      ? `${serviceName} • ${order?.serviceBooking?.packageName || 'Standard Package'} • ${getEtaText(order)}`
+                                      : `${itemCount} item${itemCount === 1 ? '' : 's'} • ${getEtaText(order)}`}
+                                  </p>
                                 </div>
                               </div>
 
@@ -441,16 +515,34 @@ const UserDashboard = () => {
                             </div>
 
                             <div className="mt-4 flex flex-wrap gap-2">
-                              {items.slice(0, 4).map((item, index) => (
-                                <span key={`${order._id}-${index}`} className="inline-flex items-center rounded-full bg-slate-100 px-3 py-1 text-xs text-slate-700">
-                                  {item.name} x{item.quantity}
-                                </span>
-                              ))}
-                              {items.length > 4 ? (
-                                <span className="inline-flex items-center rounded-full bg-slate-200 px-3 py-1 text-xs text-slate-700">
-                                  +{items.length - 4} more
-                                </span>
-                              ) : null}
+                              {isServiceScope ? (
+                                <>
+                                  <span className="inline-flex items-center rounded-full bg-slate-100 px-3 py-1 text-xs text-slate-700">
+                                    {serviceName}
+                                  </span>
+                                  <span className="inline-flex items-center rounded-full bg-slate-100 px-3 py-1 text-xs text-slate-700">
+                                    {order?.serviceBooking?.packageName || 'Standard Package'}
+                                  </span>
+                                  {order?.serviceBooking?.scheduledFor ? (
+                                    <span className="inline-flex items-center rounded-full bg-slate-100 px-3 py-1 text-xs text-slate-700">
+                                      Scheduled {formatOrderDate(order.serviceBooking.scheduledFor)}
+                                    </span>
+                                  ) : null}
+                                </>
+                              ) : (
+                                <>
+                                  {items.slice(0, 4).map((item, index) => (
+                                    <span key={`${order._id}-${index}`} className="inline-flex items-center rounded-full bg-slate-100 px-3 py-1 text-xs text-slate-700">
+                                      {item.name} x{item.quantity}
+                                    </span>
+                                  ))}
+                                  {items.length > 4 ? (
+                                    <span className="inline-flex items-center rounded-full bg-slate-200 px-3 py-1 text-xs text-slate-700">
+                                      +{items.length - 4} more
+                                    </span>
+                                  ) : null}
+                                </>
+                              )}
                             </div>
 
                             <div className="mt-4 flex flex-wrap items-center gap-2">
@@ -458,7 +550,7 @@ const UserDashboard = () => {
                                 onClick={() => handleQuickReorder(order)}
                                 className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-100"
                               >
-                                Reorder
+                                {isServiceScope ? 'Book Again' : 'Reorder'}
                               </button>
                               <button
                                 onClick={() => setExpandedOrderId((prev) => (prev === order._id ? '' : order._id))}
@@ -479,15 +571,28 @@ const UserDashboard = () => {
                             <div className="border-t border-slate-100 bg-slate-50/60 p-4 md:p-5">
                               <div className="grid gap-4 lg:grid-cols-2">
                                 <div>
-                                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Ordered Items</p>
-                                  <ul className="mt-3 space-y-2">
-                                    {items.map((item, index) => (
-                                      <li key={`${order._id}-detail-${index}`} className="flex items-center justify-between rounded-xl bg-white border border-slate-200 px-3 py-2">
-                                        <span className="text-sm text-slate-700">{item.name} x{item.quantity}</span>
-                                        <span className="text-sm font-semibold text-slate-900">{formatMoney(item.totalPrice)}</span>
-                                      </li>
-                                    ))}
-                                  </ul>
+                                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">{isServiceScope ? 'Service Details' : 'Ordered Items'}</p>
+                                  {isServiceScope ? (
+                                    <div className="mt-3 space-y-2">
+                                      <div className="rounded-xl bg-white border border-slate-200 px-3 py-2 text-sm text-slate-700">
+                                        <p className="font-semibold text-slate-900">{serviceName}</p>
+                                        <p className="mt-1">Package: {order?.serviceBooking?.packageName || 'Standard Package'}</p>
+                                        {order?.serviceBooking?.scheduledFor ? <p className="mt-1">Scheduled: {formatOrderDate(order.serviceBooking.scheduledFor)}</p> : null}
+                                        {order?.serviceBooking?.timeSlot ? <p className="mt-1">Slot: {order.serviceBooking.timeSlot}</p> : null}
+                                        {order?.serviceBooking?.estimatedDurationMins ? <p className="mt-1">Duration: {order.serviceBooking.estimatedDurationMins} mins</p> : null}
+                                        {order?.serviceBooking?.notes ? <p className="mt-1">Notes: {order.serviceBooking.notes}</p> : null}
+                                      </div>
+                                    </div>
+                                  ) : (
+                                    <ul className="mt-3 space-y-2">
+                                      {items.map((item, index) => (
+                                        <li key={`${order._id}-detail-${index}`} className="flex items-center justify-between rounded-xl bg-white border border-slate-200 px-3 py-2">
+                                          <span className="text-sm text-slate-700">{item.name} x{item.quantity}</span>
+                                          <span className="text-sm font-semibold text-slate-900">{formatMoney(item.totalPrice)}</span>
+                                        </li>
+                                      ))}
+                                    </ul>
+                                  )}
                                 </div>
 
                                 <div className="space-y-3">
