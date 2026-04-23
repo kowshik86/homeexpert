@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useMemo } from 'react';
+import React, { createContext, useContext, useState, useEffect, useMemo, useCallback } from 'react';
 import { useAuth } from './AuthContext';
 
 // Create the cart context
@@ -49,8 +49,6 @@ export const CartProvider = ({ children }) => {
   const activeCartStorageKey = useMemo(() => getCartStorageKey(currentUser), [currentUser]);
 
   const [cartItems, setCartItems] = useState([]);
-  const [cartCount, setCartCount] = useState(0);
-  const [cartTotal, setCartTotal] = useState(0);
   const [hydrated, setHydrated] = useState(false);
 
   // Load cart for current auth identity (guest/user).
@@ -77,24 +75,22 @@ export const CartProvider = ({ children }) => {
     }
 
     saveCartToStorage(activeCartStorageKey, cartItems);
-
-    // Calculate cart count and total
-    const itemCount = cartItems.reduce((total, item) => total + item.quantity, 0);
-    setCartCount(itemCount);
-
-    const total = cartItems.reduce((total, item) => {
-      // Always use the price property that was set when adding to cart
-      // This ensures consistency with what's displayed in the cart
-      const price = item.price || item.cost || 0;
-      return total + (price * item.quantity);
-    }, 0);
-    setCartTotal(total);
-
-    console.log('Cart updated - Count:', itemCount, 'Total:', total);
   }, [cartItems, activeCartStorageKey, hydrated]);
 
+  const cartCount = useMemo(() => {
+    return cartItems.reduce((total, item) => total + Number(item.quantity || 0), 0);
+  }, [cartItems]);
+
+  const cartTotal = useMemo(() => {
+    return cartItems.reduce((total, item) => {
+      const price = Number(item.price || item.cost || 0);
+      const quantity = Number(item.quantity || 0);
+      return total + (price * quantity);
+    }, 0);
+  }, [cartItems]);
+
   // Add item to cart
-  const addToCart = (product) => {
+  const addToCart = useCallback((product) => {
     // Log the product being added
     console.log('Adding product to cart:', product);
 
@@ -150,10 +146,10 @@ export const CartProvider = ({ children }) => {
 
       return updatedItems;
     });
-  };
+  }, [activeCartStorageKey]);
 
   // Remove item from cart
-  const removeFromCart = (productId) => {
+  const removeFromCart = useCallback((productId) => {
     console.log('Removing product with ID:', productId);
     setCartItems(prevItems => {
       const newItems = prevItems.filter(item => {
@@ -169,10 +165,10 @@ export const CartProvider = ({ children }) => {
 
       return newItems;
     });
-  };
+  }, [activeCartStorageKey]);
 
   // Update item quantity
-  const updateQuantity = (productId, quantity) => {
+  const updateQuantity = useCallback((productId, quantity) => {
     console.log('Updating quantity for product ID:', productId, 'to', quantity);
 
     if (quantity <= 0) {
@@ -194,25 +190,25 @@ export const CartProvider = ({ children }) => {
 
       return updatedItems;
     });
-  };
+  }, [activeCartStorageKey]);
 
   // Clear cart
-  const clearCart = () => {
+  const clearCart = useCallback(() => {
     setCartItems([]);
     localStorage.removeItem(activeCartStorageKey);
     console.log('Cart cleared');
-  };
+  }, [activeCartStorageKey]);
 
   // Context value
-  const value = {
+  const value = useMemo(() => ({
     cartItems,
     cartCount,
     cartTotal,
     addToCart,
     removeFromCart,
     updateQuantity,
-    clearCart
-  };
+    clearCart,
+  }), [cartItems, cartCount, cartTotal, addToCart, removeFromCart, updateQuantity, clearCart]);
 
   return (
     <CartContext.Provider value={value}>

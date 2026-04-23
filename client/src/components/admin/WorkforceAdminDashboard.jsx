@@ -75,7 +75,7 @@ function WorkforceAdminDashboard() {
     category: '',
     imageUrl: '',
     description: '',
-    quantity: '1',
+    quantity: '50',
     cost: '0',
   });
   const [savingProduct, setSavingProduct] = useState(false);
@@ -227,7 +227,7 @@ function WorkforceAdminDashboard() {
         category: '',
         imageUrl: '',
         description: '',
-        quantity: '1',
+        quantity: '50',
         cost: '0',
       });
       fetchAllRoles();

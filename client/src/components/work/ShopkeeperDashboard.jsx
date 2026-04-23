@@ -1,13 +1,10 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Link, Navigate, useNavigate } from 'react-router-dom';
 import { fetchAllShopItems, fetchShopkeeperById } from '../../services/api';
+import { clearWorkforceAuth, getWorkforceAuth } from '../../utils/workforceAuth';
 
 const getAuthState = () => {
-  try {
-    return JSON.parse(localStorage.getItem('workforceAuth') || 'null');
-  } catch {
-    return null;
-  }
+  return getWorkforceAuth('shopkeeper');
 };
 
 const normalizeName = (name) => {
@@ -18,9 +15,32 @@ const normalizeName = (name) => {
   return `${name || ''}`.trim();
 };
 
-const getProductKey = (item) => normalizeName(item?.name).toLowerCase();
+const getInventoryProductKey = (item) => {
+  if (item?.catalogItemId) {
+    return `catalog:${String(item.catalogItemId)}`;
+  }
+
+  return `name:${normalizeName(item?.name).toLowerCase()}`;
+};
+
+const getInventoryProductFallbackNameKey = (item) => {
+  return `name:${normalizeName(item?.name).toLowerCase()}`;
+};
+
+const getCatalogItemKey = (item) => {
+  if (item?._id) {
+    return `catalog:${String(item._id)}`;
+  }
+
+  return `name:${normalizeName(item?.name).toLowerCase()}`;
+};
+
+const getCatalogItemFallbackNameKey = (item) => {
+  return `name:${normalizeName(item?.name).toLowerCase()}`;
+};
 
 const buildProductFromCatalogItem = (catalogItem, quantity) => ({
+  catalogItemId: catalogItem._id,
   name: Array.isArray(catalogItem.name) ? catalogItem.name : [catalogItem.name],
   category: catalogItem.category || 'uncategorized',
   imageUrl: catalogItem.imageUrl,
@@ -29,6 +49,58 @@ const buildProductFromCatalogItem = (catalogItem, quantity) => ({
   price: Number(catalogItem.cost || 0),
   rating: catalogItem.rating || 0,
 });
+
+const toNonNegativeNumberOrNull = (value) => {
+  const parsedValue = Number(value);
+  if (Number.isNaN(parsedValue) || parsedValue < 0) {
+    return null;
+  }
+
+  return parsedValue;
+};
+
+const getLockedPrice = (product, catalogPriceMap = {}) => {
+  const directPrice = toNonNegativeNumberOrNull(product?.price);
+  const legacyCost = toNonNegativeNumberOrNull(product?.cost);
+  const productKey = getInventoryProductKey(product);
+  const fallbackNameKey = getInventoryProductFallbackNameKey(product);
+  const catalogPrice = toNonNegativeNumberOrNull(catalogPriceMap[productKey] ?? catalogPriceMap[fallbackNameKey]);
+
+  if (directPrice !== null && directPrice > 0) {
+    return directPrice;
+  }
+
+  if (legacyCost !== null && legacyCost > 0) {
+    return legacyCost;
+  }
+
+  if (catalogPrice !== null && catalogPrice > 0) {
+    return catalogPrice;
+  }
+
+  if (directPrice !== null) {
+    return directPrice;
+  }
+
+  if (legacyCost !== null) {
+    return legacyCost;
+  }
+
+  if (catalogPrice !== null) {
+    return catalogPrice;
+  }
+
+  return 0;
+};
+
+const formatPrice = (value) => {
+  const parsedValue = Number(value);
+  if (!Number.isFinite(parsedValue)) {
+    return '₹0';
+  }
+
+  return Number.isInteger(parsedValue) ? `₹${parsedValue}` : `₹${parsedValue.toFixed(2)}`;
+};
 
 const formatAddress = (address) => {
   if (!address) {
@@ -42,6 +114,7 @@ const formatAddress = (address) => {
 function ShopkeeperDashboard() {
   const navigate = useNavigate();
   const authState = getAuthState();
+  const isAuthorized = authState?.role === 'shopkeeper';
   const shopkeeperId = authState?.profile?._id;
 
   const [shopkeeper, setShopkeeper] = useState(authState?.profile || null);
@@ -56,11 +129,11 @@ function ShopkeeperDashboard() {
   const [addingCatalogId, setAddingCatalogId] = useState('');
   const [searchCatalog, setSearchCatalog] = useState('');
 
-  if (!authState || authState.role !== 'shopkeeper') {
-    return <Navigate to="/work/login" replace />;
-  }
-
   useEffect(() => {
+    if (!isAuthorized) {
+      return;
+    }
+
     let isMounted = true;
 
     const loadShopkeeper = async () => {
@@ -99,7 +172,7 @@ function ShopkeeperDashboard() {
       setCatalog(Array.isArray(items) ? items : []);
       const nextCatalogDrafts = {};
       (Array.isArray(items) ? items : []).forEach((item) => {
-        nextCatalogDrafts[item._id] = { quantity: 1 };
+        nextCatalogDrafts[item._id] = { quantity: 50 };
       });
       setCatalogDrafts(nextCatalogDrafts);
       setCatalogLoading(false);
@@ -111,22 +184,35 @@ function ShopkeeperDashboard() {
     return () => {
       isMounted = false;
     };
-  }, [shopkeeperId]);
+  }, [shopkeeperId, isAuthorized]);
 
   const inventory = useMemo(() => Array.isArray(shopkeeper?.products) ? shopkeeper.products : [], [shopkeeper]);
 
   const inventoryMap = useMemo(() => {
     return inventory.reduce((accumulator, product) => {
-      accumulator[getProductKey(product)] = product;
+      accumulator[getInventoryProductKey(product)] = product;
       return accumulator;
     }, {});
   }, [inventory]);
+
+  const catalogPriceMap = useMemo(() => {
+    return (Array.isArray(catalog) ? catalog : []).reduce((accumulator, catalogItem) => {
+      const price = toNonNegativeNumberOrNull(catalogItem?.cost);
+      if (price === null) {
+        return accumulator;
+      }
+
+      accumulator[getCatalogItemKey(catalogItem)] = price;
+      accumulator[getCatalogItemFallbackNameKey(catalogItem)] = price;
+      return accumulator;
+    }, {});
+  }, [catalog]);
 
   const totalStock = useMemo(() => inventory.reduce((sum, product) => sum + Number(product.quantity || 0), 0), [inventory]);
   const activeProducts = useMemo(() => inventory.filter((product) => Number(product.quantity || 0) > 0).length, [inventory]);
 
   const handleLogout = () => {
-    localStorage.removeItem('workforceAuth');
+    clearWorkforceAuth('shopkeeper');
     navigate('/work/login');
   };
 
@@ -153,7 +239,7 @@ function ShopkeeperDashboard() {
     setSuccessMessage('');
 
     const draftQuantity = Number(inventoryDrafts[product._id]?.quantity ?? product.quantity ?? 0);
-    const priceValue = Number(product.price || 0);
+    const priceValue = getLockedPrice(product, catalogPriceMap);
 
     if (Number.isNaN(draftQuantity) || draftQuantity < 0) {
       setError('Quantity must be zero or greater.');
@@ -185,15 +271,16 @@ function ShopkeeperDashboard() {
     setError('');
     setSuccessMessage('');
 
-    const addQuantity = Number(catalogDrafts[catalogItem._id]?.quantity ?? 1);
+    const addQuantity = Number(catalogDrafts[catalogItem._id]?.quantity ?? 50);
 
     if (Number.isNaN(addQuantity) || addQuantity <= 0) {
       setError('Add quantity must be at least 1.');
       return;
     }
 
-    const productKey = getProductKey(catalogItem);
-    const existingProduct = inventoryMap[productKey];
+    const productKey = getCatalogItemKey(catalogItem);
+    const fallbackNameKey = getCatalogItemFallbackNameKey(catalogItem);
+    const existingProduct = inventoryMap[productKey] || inventoryMap[fallbackNameKey];
 
     try {
       setAddingCatalogId(catalogItem._id);
@@ -253,6 +340,10 @@ function ShopkeeperDashboard() {
   const formatLocation = shopkeeper?.shopAddress
     ? `${shopkeeper.shopAddress.city || 'Unknown City'}, ${shopkeeper.shopAddress.state || 'Unknown State'} - ${shopkeeper.shopAddress.pincode || 'Unknown Pincode'}`
     : 'Not Available';
+
+  if (!isAuthorized) {
+    return <Navigate to="/work/login" replace />;
+  }
 
   return (
     <div className="pt-24 pb-12 px-4 bg-gradient-to-b from-violet-50 via-white to-white min-h-screen">
@@ -352,7 +443,7 @@ function ShopkeeperDashboard() {
                             <label className="block text-xs font-semibold text-gray-500 mb-1">Locked Price</label>
                             <input
                               type="text"
-                              value={`₹${Number(product.price || 0)}`}
+                              value={formatPrice(getLockedPrice(product, catalogPriceMap))}
                               readOnly
                               className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-gray-700"
                             />
@@ -400,9 +491,10 @@ function ShopkeeperDashboard() {
             ) : (
               <div className="space-y-4 max-h-[950px] overflow-y-auto pr-1">
                 {filteredCatalog.map((catalogItem) => {
-                  const productKey = getProductKey(catalogItem);
-                  const existingProduct = inventoryMap[productKey];
-                  const addQuantity = catalogDrafts[catalogItem._id]?.quantity ?? 1;
+                  const productKey = getCatalogItemKey(catalogItem);
+                  const fallbackNameKey = getCatalogItemFallbackNameKey(catalogItem);
+                  const existingProduct = inventoryMap[productKey] || inventoryMap[fallbackNameKey];
+                  const addQuantity = catalogDrafts[catalogItem._id]?.quantity ?? 50;
 
                   return (
                     <div key={catalogItem._id} className="rounded-2xl border border-gray-200 p-4 shadow-sm bg-gradient-to-br from-white to-violet-50/40">

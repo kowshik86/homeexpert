@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import { setWorkforceAuth } from '../../utils/workforceAuth';
 
 const ROLE_CONFIG = {
   shopkeeper: {
@@ -238,17 +239,11 @@ function WorkLogin() {
 
       const data = await response.json();
 
-      localStorage.removeItem('currentUser');
-
-      localStorage.setItem(
-        'workforceAuth',
-        JSON.stringify({
-          role: selectedRole,
-          token: data?.token,
-          profile: data?.payload,
-          loggedInAt: new Date().toISOString(),
-        }),
-      );
+      setWorkforceAuth(selectedRole, {
+        token: data?.token,
+        profile: data?.payload,
+        loggedInAt: new Date().toISOString(),
+      });
 
       navigate(roleDetails.redirectPath);
     } catch (authError) {

@@ -58,6 +58,27 @@ const scoreProductMatch = (product, searchTerm) => {
   return score;
 };
 
+const getProductPrice = (product) => {
+  const parsedPrice = Number(product?.price ?? product?.cost ?? 0);
+  if (Number.isNaN(parsedPrice) || parsedPrice < 0) {
+    return 0;
+  }
+
+  return parsedPrice;
+};
+
+const getDynamicPriceRangeMax = (items = []) => {
+  const highestPrice = items.reduce((currentMax, product) => {
+    return Math.max(currentMax, getProductPrice(product));
+  }, 0);
+
+  if (!Number.isFinite(highestPrice) || highestPrice <= 0) {
+    return 100;
+  }
+
+  return Math.max(50, Math.ceil(highestPrice / 50) * 50);
+};
+
 const Products = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const categoryParam = searchParams.get('category') || 'all';
@@ -70,7 +91,8 @@ const Products = () => {
   const [error, setError] = useState(null);
   const [activeCategory, setActiveCategory] = useState(categoryParam);
   const [sortOption, setSortOption] = useState('default');
-  const [priceRange, setPriceRange] = useState({ min: 0, max: 1000 });
+  const [priceRangeLimit, setPriceRangeLimit] = useState(100);
+  const [priceRange, setPriceRange] = useState({ min: 0, max: 100 });
   const [searchTerm, setSearchTerm] = useState(searchQuery);
   const [isExactMatch, setIsExactMatch] = useState(exactMatch);
 
@@ -168,8 +190,12 @@ const Products = () => {
           category: item.category || activeCategory
         }));
 
+        const dynamicPriceMax = getDynamicPriceRangeMax(allProducts);
+
         setProducts(allProducts);
         setFilteredProducts(allProducts);
+        setPriceRangeLimit(dynamicPriceMax);
+        setPriceRange({ min: 0, max: dynamicPriceMax });
         setLoading(false);
       } catch (err) {
         console.error('Error fetching products:', err);
@@ -223,21 +249,21 @@ const Products = () => {
 
     // Apply price filter
     result = result.filter(product => {
-      const price = product.price || product.cost || 0;
+      const price = getProductPrice(product);
       return price >= priceRange.min && price <= priceRange.max;
     });
 
     // Apply sorting
     if (sortOption === 'price-low-high') {
       result.sort((a, b) => {
-        const priceA = a.price || a.cost || 0;
-        const priceB = b.price || b.cost || 0;
+        const priceA = getProductPrice(a);
+        const priceB = getProductPrice(b);
         return priceA - priceB;
       });
     } else if (sortOption === 'price-high-low') {
       result.sort((a, b) => {
-        const priceA = a.price || a.cost || 0;
-        const priceB = b.price || b.cost || 0;
+        const priceA = getProductPrice(a);
+        const priceB = getProductPrice(b);
         return priceB - priceA;
       });
     }
@@ -329,8 +355,8 @@ const Products = () => {
                 type="range"
                 id="price-range"
                 min="0"
-                max="1000"
-                step="50"
+                max={priceRangeLimit}
+                step="10"
                 value={priceRange.max}
                 onChange={(e) => setPriceRange({ ...priceRange, max: Number(e.target.value) })}
                 className="w-24 accent-primary-custom"

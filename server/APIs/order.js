@@ -3,6 +3,9 @@ const orderApp = express.Router();
 const orderModel = require('../models/orderModel');
 const userModel = require('../models/userModel');
 const workerModel = require('../models/workerModel');
+const shopItemsModel = require('../models/shopItemsModel');
+const shopGoodsModel = require('../models/shopGoodsModel');
+const shopKeeperModel = require('../models/shopKeeperModel');
 const expressAsyncHandler = require('express-async-handler');
 const mongoose = require('mongoose');
 const crypto = require('crypto');
@@ -19,6 +22,12 @@ const SERVICE_MATCHING_KEYWORDS = {
   electrical: ['electrical', 'electric', 'wiring', 'switchboard', 'fan'],
 };
 const PAYMENT_PROVIDER = 'RAZORPAY';
+
+const populateOrderRelations = (query) => {
+  return query
+    .populate('deliveryPersonId', 'firstName lastName mobileNumber profileImg vehicleType vehicleNumber')
+    .populate('assignedWorkerId', 'firstName lastName mobileNumber profileImg workTypes');
+};
 
 const hasRazorpayCredentials = () => Boolean(process.env.RAZORPAY_KEY_ID && process.env.RAZORPAY_KEY_SECRET);
 
@@ -107,6 +116,204 @@ const hasOverlappingWorkerBooking = ({ targetOrder, activeBookings }) => {
   });
 };
 
+const isValidLatitude = (value) => Number.isFinite(value) && value >= -90 && value <= 90;
+const isValidLongitude = (value) => Number.isFinite(value) && value >= -180 && value <= 180;
+
+const createHttpError = (statusCode, message) => {
+  const error = new Error(message);
+  error.statusCode = statusCode;
+  return error;
+};
+
+const normalizeProductType = (value) => {
+  const normalizedValue = String(value || '').trim().toLowerCase();
+  return normalizedValue === 'shopgood' ? 'shopGood' : 'shopItem';
+};
+
+const normalizeStockName = (value) => String(value || '').trim().toLowerCase();
+
+const getStockNames = (value) => {
+  const names = Array.isArray(value) ? value : [value];
+  return names.map(normalizeStockName).filter(Boolean);
+};
+
+const getCatalogModelByProductType = (productType) => {
+  return normalizeProductType(productType) === 'shopGood' ? shopGoodsModel : shopItemsModel;
+};
+
+const aggregateOrderStockRequirements = (orderItems = []) => {
+  if (!Array.isArray(orderItems) || orderItems.length === 0) {
+    throw createHttpError(400, 'At least one order item is required for product orders.');
+  }
+
+  const requirementMap = new Map();
+
+  orderItems.forEach((item, index) => {
+    const productId = String(item?.productId || '').trim();
+    const productType = normalizeProductType(item?.productType);
+    const requestedQuantity = Number(item?.quantity);
+    const fallbackName = `Item ${index + 1}`;
+    const displayName = String(item?.name || fallbackName).trim() || fallbackName;
+
+    if (!mongoose.Types.ObjectId.isValid(productId)) {
+      throw createHttpError(400, `Invalid product id for ${displayName}.`);
+    }
+
+    if (!Number.isInteger(requestedQuantity) || requestedQuantity <= 0) {
+      throw createHttpError(400, `Invalid quantity for ${displayName}.`);
+    }
+
+    const requirementKey = `${productType}:${productId}`;
+    const existingRequirement = requirementMap.get(requirementKey);
+
+    requirementMap.set(requirementKey, {
+      productId,
+      productType,
+      displayName: existingRequirement?.displayName || displayName,
+      requiredQuantity: Number(existingRequirement?.requiredQuantity || 0) + requestedQuantity,
+    });
+  });
+
+  return Array.from(requirementMap.values());
+};
+
+const reserveCatalogStock = async (stockRequirements = []) => {
+  const reservedEntries = [];
+
+  try {
+    for (const requirement of stockRequirements) {
+      const catalogModel = getCatalogModelByProductType(requirement.productType);
+      const catalogProduct = await catalogModel.findById(requirement.productId).select('quantity');
+
+      if (!catalogProduct) {
+        throw createHttpError(404, `${requirement.displayName} is no longer available.`);
+      }
+
+      if (Number(catalogProduct.quantity || 0) < Number(requirement.requiredQuantity || 0)) {
+        throw createHttpError(
+          409,
+          `${requirement.displayName} has only ${Number(catalogProduct.quantity || 0)} left in stock.`,
+        );
+      }
+
+      const reservationResult = await catalogModel.updateOne(
+        { _id: requirement.productId, quantity: { $gte: requirement.requiredQuantity } },
+        { $inc: { quantity: -requirement.requiredQuantity } },
+      );
+
+      if (!reservationResult.modifiedCount) {
+        throw createHttpError(409, `${requirement.displayName} stock changed. Please refresh and try again.`);
+      }
+
+      reservedEntries.push({
+        productId: requirement.productId,
+        productType: requirement.productType,
+        quantity: requirement.requiredQuantity,
+      });
+    }
+
+    return reservedEntries;
+  } catch (error) {
+    if (reservedEntries.length > 0) {
+      await rollbackCatalogStock(reservedEntries);
+    }
+    throw error;
+  }
+};
+
+const rollbackCatalogStock = async (reservedEntries = []) => {
+  if (!Array.isArray(reservedEntries) || reservedEntries.length === 0) {
+    return;
+  }
+
+  await Promise.all(reservedEntries.map((entry) => {
+    const catalogModel = getCatalogModelByProductType(entry.productType);
+    return catalogModel.updateOne(
+      { _id: entry.productId },
+      { $inc: { quantity: Number(entry.quantity || 0) } },
+    ).catch(() => null);
+  }));
+};
+
+const prepareShopkeeperInventoryAdjustments = async (stockRequirements = []) => {
+  const shopItemRequirements = stockRequirements.filter((entry) => entry.productType === 'shopItem');
+  if (shopItemRequirements.length === 0) {
+    return [];
+  }
+
+  const shopkeepers = await shopKeeperModel.find({ 'products.quantity': { $gt: 0 } });
+  const changedShopkeepers = new Map();
+
+  for (const requirement of shopItemRequirements) {
+    let remainingQuantity = Number(requirement.requiredQuantity || 0);
+    const requiredProductId = String(requirement.productId);
+    const requiredName = normalizeStockName(requirement.displayName);
+    const candidates = [];
+
+    for (const shopkeeper of shopkeepers) {
+      const products = Array.isArray(shopkeeper.products) ? shopkeeper.products : [];
+
+      for (const product of products) {
+        const currentQuantity = Number(product.quantity || 0);
+        if (currentQuantity <= 0) {
+          continue;
+        }
+
+        const productCatalogItemId = String(product.catalogItemId || '');
+        const productNameMatches = requiredName && getStockNames(product.name).includes(requiredName);
+        const productIdMatches = productCatalogItemId && productCatalogItemId === requiredProductId;
+
+        if (!productIdMatches && !productNameMatches) {
+          continue;
+        }
+
+        candidates.push({
+          shopkeeper,
+          product,
+          currentQuantity,
+        });
+      }
+    }
+
+    candidates.sort((left, right) => right.currentQuantity - left.currentQuantity);
+
+    for (const candidate of candidates) {
+      if (remainingQuantity <= 0) {
+        break;
+      }
+
+      const availableQuantity = Number(candidate.product.quantity || 0);
+      const deduction = Math.min(availableQuantity, remainingQuantity);
+      if (deduction <= 0) {
+        continue;
+      }
+
+      candidate.product.quantity = availableQuantity - deduction;
+      remainingQuantity -= deduction;
+      changedShopkeepers.set(String(candidate.shopkeeper._id), candidate.shopkeeper);
+    }
+  }
+
+  return Array.from(changedShopkeepers.values());
+};
+
+const savePreparedShopkeeperInventoryChanges = async (preparedShopkeepers = []) => {
+  for (const shopkeeper of preparedShopkeepers) {
+    await shopkeeper.save();
+  }
+};
+
+const reserveStockForProductOrder = async (orderItems = []) => {
+  const stockRequirements = aggregateOrderStockRequirements(orderItems);
+  const preparedShopkeepers = await prepareShopkeeperInventoryAdjustments(stockRequirements);
+  const catalogReservations = await reserveCatalogStock(stockRequirements);
+
+  return {
+    catalogReservations,
+    preparedShopkeepers,
+  };
+};
+
 orderApp.get('/payment/config', expressAsyncHandler(async (req, res) => {
   res.status(200).send({
     message: 'Payment gateway configuration fetched successfully',
@@ -178,8 +385,13 @@ orderApp.post('/payment/verify', expressAsyncHandler(async (req, res) => {
 
 // Create a new order
 orderApp.post('/order', expressAsyncHandler(async (req, res) => {
+  let reservedCatalogEntries = [];
+
   try {
     const orderData = req.body;
+    let preparedShopkeepers = [];
+
+    orderData.bookingType = orderData.bookingType === 'service' ? 'service' : 'product';
     
     // Validate user exists
     const user = await userModel.findById(orderData.userId);
@@ -231,19 +443,39 @@ orderApp.post('/order', expressAsyncHandler(async (req, res) => {
       orderData.deliveryFee = 0;
       orderData.discount = 0;
       orderData.paymentStatus = orderData.paymentStatus || 'PENDING';
+    } else {
+      const stockReservation = await reserveStockForProductOrder(orderData.orderItems || []);
+      reservedCatalogEntries = stockReservation.catalogReservations;
+      preparedShopkeepers = stockReservation.preparedShopkeepers;
     }
     
     // Create new order
     const newOrder = new orderModel(orderData);
     const savedOrder = await newOrder.save();
+
+    if (preparedShopkeepers.length > 0) {
+      try {
+        await savePreparedShopkeeperInventoryChanges(preparedShopkeepers);
+      } catch (shopkeeperSyncError) {
+        console.error('Shopkeeper inventory sync failed after order save:', shopkeeperSyncError);
+      }
+    }
+
+    reservedCatalogEntries = [];
     
     res.status(201).send({ 
       message: "Order placed successfully", 
       payload: savedOrder 
     });
   } catch (error) {
-    res.status(500).send({ 
-      message: "Failed to place order", 
+    const statusCode = Number(error.statusCode || 500);
+
+    if (Array.isArray(reservedCatalogEntries) && reservedCatalogEntries.length > 0) {
+      await rollbackCatalogStock(reservedCatalogEntries);
+    }
+
+    res.status(statusCode).send({ 
+      message: error.message || "Failed to place order", 
       error: error.message 
     });
   }
@@ -255,7 +487,7 @@ orderApp.get('/orders/:userId', expressAsyncHandler(async (req, res) => {
     const userId = req.params.userId;
     
     // Find all orders for the user
-    const orders = await orderModel.find({ userId }).sort({ createdAt: -1 });
+    const orders = await populateOrderRelations(orderModel.find({ userId }).sort({ createdAt: -1 }));
     
     res.status(200).send({ 
       message: "Orders fetched successfully", 
@@ -301,7 +533,7 @@ orderApp.get('/order/:orderId', expressAsyncHandler(async (req, res) => {
     const orderId = req.params.orderId;
     
     // Find the order
-    const order = await orderModel.findById(orderId);
+    const order = await populateOrderRelations(orderModel.findById(orderId));
     
     if (!order) {
       return res.status(404).send({ message: "Order not found" });
@@ -364,6 +596,89 @@ orderApp.patch('/order/:orderId/status', expressAsyncHandler(async (req, res) =>
     res.status(500).send({ 
       message: "Failed to update order status", 
       error: error.message 
+    });
+  }
+}));
+
+// Update delivery partner live GPS location for an active order
+orderApp.patch('/order/:orderId/location', expressAsyncHandler(async (req, res) => {
+  try {
+    const { orderId } = req.params;
+    const { deliveryPersonId, workerId, lat, lng, destinationLat, destinationLng } = req.body || {};
+
+    const hasValidDeliveryPersonId = Boolean(deliveryPersonId && mongoose.Types.ObjectId.isValid(deliveryPersonId));
+    const hasValidWorkerId = Boolean(workerId && mongoose.Types.ObjectId.isValid(workerId));
+
+    if (!hasValidDeliveryPersonId && !hasValidWorkerId) {
+      return res.status(400).send({ message: 'Valid deliveryPersonId or workerId is required' });
+    }
+
+    const latitude = Number(lat);
+    const longitude = Number(lng);
+
+    if (!isValidLatitude(latitude) || !isValidLongitude(longitude)) {
+      return res.status(400).send({ message: 'Valid latitude and longitude are required' });
+    }
+
+    const order = await orderModel.findById(orderId);
+    if (!order) {
+      return res.status(404).send({ message: 'Order not found' });
+    }
+
+    if (hasValidWorkerId) {
+      if (String(order.assignedWorkerId || '') !== String(workerId)) {
+        return res.status(403).send({ message: 'This booking is assigned to a different worker' });
+      }
+
+      if (!WORKER_ACTIVE_ASSIGNMENT_STATUSES.includes(order.orderStatus)) {
+        return res.status(400).send({ message: 'Live location can be updated only for active worker bookings' });
+      }
+    } else {
+      if (String(order.deliveryPersonId || '') !== String(deliveryPersonId)) {
+        return res.status(403).send({ message: 'This order is assigned to a different delivery partner' });
+      }
+
+      if (order.orderStatus !== 'OUT_FOR_DELIVERY') {
+        return res.status(400).send({ message: 'Live location can be updated only for out-for-delivery orders' });
+      }
+    }
+
+    order.liveTracking = {
+      ...(order.liveTracking || {}),
+      deliveryPersonLocation: {
+        lat: latitude,
+        lng: longitude,
+      },
+      ...(hasValidWorkerId
+        ? {
+            workerLocation: {
+              lat: latitude,
+              lng: longitude,
+            },
+          }
+        : {}),
+      ...(isValidLatitude(Number(destinationLat)) && isValidLongitude(Number(destinationLng))
+        ? {
+            destinationLocation: {
+              lat: Number(destinationLat),
+              lng: Number(destinationLng),
+            },
+          }
+        : {}),
+      locationSyncedAt: new Date(),
+      sourceRole: hasValidWorkerId ? 'worker' : 'delivery',
+    };
+
+    await order.save();
+
+    res.status(200).send({
+      message: 'Order live location updated successfully',
+      payload: order.liveTracking,
+    });
+  } catch (error) {
+    res.status(500).send({
+      message: 'Failed to update live location',
+      error: error.message,
     });
   }
 }));
@@ -626,9 +941,11 @@ orderApp.get('/orders/:userId/recent', expressAsyncHandler(async (req, res) => {
     const userId = req.params.userId;
     
     // Find recent orders for the user
-    const recentOrders = await orderModel.find({ userId })
-      .sort({ createdAt: -1 })
-      .limit(5);
+    const recentOrders = await populateOrderRelations(
+      orderModel.find({ userId })
+        .sort({ createdAt: -1 })
+        .limit(5),
+    );
     
     res.status(200).send({ 
       message: "Recent orders fetched successfully", 

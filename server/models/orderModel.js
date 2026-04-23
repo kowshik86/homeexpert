@@ -116,6 +116,36 @@ const serviceBookingSchema = new mongoose.Schema({
   },
 }, { _id: false });
 
+const liveTrackingSchema = new mongoose.Schema({
+  deliveryPersonLocation: {
+    lat: {
+      type: Number,
+      min: -90,
+      max: 90,
+    },
+    lng: {
+      type: Number,
+      min: -180,
+      max: 180,
+    },
+  },
+  destinationLocation: {
+    lat: {
+      type: Number,
+      min: -90,
+      max: 90,
+    },
+    lng: {
+      type: Number,
+      min: -180,
+      max: 180,
+    },
+  },
+  locationSyncedAt: {
+    type: Date,
+  },
+}, { _id: false });
+
 // Define the schema for orders
 const orderSchema = new mongoose.Schema({
   userId: {
@@ -131,6 +161,7 @@ const orderSchema = new mongoose.Schema({
   orderItems: [orderItemSchema],
   deliveryAddress: deliveryAddressSchema,
   serviceBooking: serviceBookingSchema,
+  liveTracking: liveTrackingSchema,
   paymentMethod: {
     type: String,
     enum: ['COD', 'ONLINE', 'UPI', 'WALLET'],

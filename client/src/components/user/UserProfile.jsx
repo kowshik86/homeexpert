@@ -1,6 +1,9 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { toast } from 'react-toastify';
+import { readImageFileAsDataUrl, validateImageFile } from '../../utils/imageUpload';
+
+const PROFILE_PLACEHOLDER = 'https://via.placeholder.com/120?text=Profile';
 
 const UserProfile = () => {
   const { currentUser } = useAuth();
@@ -11,7 +14,12 @@ const UserProfile = () => {
     email: currentUser?.email || '',
     mobileNumber: currentUser?.mobileNumber || '',
   });
+  const [profileImageData, setProfileImageData] = useState(currentUser?.profileImg || '');
   const [isLoading, setIsLoading] = useState(false);
+
+  useEffect(() => {
+    setProfileImageData(currentUser?.profileImg || '');
+  }, [currentUser]);
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -19,6 +27,23 @@ const UserProfile = () => {
       ...prev,
       [name]: value,
     }));
+  };
+
+  const handleProfileImageUpload = async (event) => {
+    const selectedFile = event.target.files?.[0];
+    const validationMessage = validateImageFile(selectedFile);
+
+    if (validationMessage) {
+      toast.error(validationMessage);
+      return;
+    }
+
+    try {
+      const encodedImage = await readImageFileAsDataUrl(selectedFile);
+      setProfileImageData(encodedImage);
+    } catch (uploadError) {
+      toast.error(uploadError.message || 'Failed to process selected image.');
+    }
   };
 
   const handleSubmit = async (e) => {
@@ -34,6 +59,7 @@ const UserProfile = () => {
         },
         body: JSON.stringify({
           ...currentUser,
+          profileImg: profileImageData || undefined,
           firstName: formData.firstName,
           lastName: formData.lastName,
           email: formData.email,
@@ -83,6 +109,37 @@ const UserProfile = () => {
 
       {isEditing ? (
         <form onSubmit={handleSubmit} className="space-y-4 rounded-2xl border border-gray-100 bg-gradient-to-b from-white to-purple-50/30 p-5">
+          <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
+            <label htmlFor="userProfileImage" className="block text-sm font-medium text-gray-700 mb-2">
+              Profile Photo
+            </label>
+            <div className="flex flex-wrap items-center gap-4">
+              <img
+                src={profileImageData || PROFILE_PLACEHOLDER}
+                alt="Profile preview"
+                className="h-16 w-16 rounded-full border border-gray-200 object-cover bg-white"
+              />
+              <div className="space-y-2">
+                <input
+                  id="userProfileImage"
+                  type="file"
+                  accept="image/*"
+                  onChange={handleProfileImageUpload}
+                  className="block w-full text-sm text-gray-700"
+                />
+                {profileImageData ? (
+                  <button
+                    type="button"
+                    onClick={() => setProfileImageData('')}
+                    className="text-xs font-semibold text-red-600 hover:text-red-700"
+                  >
+                    Remove photo
+                  </button>
+                ) : null}
+              </div>
+            </div>
+          </div>
+
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <label htmlFor="firstName" className="block text-sm font-medium text-gray-700 mb-1">
@@ -172,6 +229,18 @@ const UserProfile = () => {
         </form>
       ) : (
         <div className="bg-gray-50 rounded-2xl p-6 border border-gray-100">
+          <div className="mb-6 flex items-center gap-3">
+            <img
+              src={currentUser?.profileImg || PROFILE_PLACEHOLDER}
+              alt="User profile"
+              className="h-14 w-14 rounded-full border border-gray-200 object-cover bg-white"
+            />
+            <div>
+              <p className="text-xs uppercase tracking-[0.2em] text-primary-custom font-bold">Profile Photo</p>
+              <p className="text-sm text-gray-600 mt-1">Used across your account screens</p>
+            </div>
+          </div>
+
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div>
               <h3 className="text-sm font-medium text-gray-500">First Name</h3>

@@ -1,9 +1,10 @@
 import React from 'react';
 import { Link, Navigate, useNavigate } from 'react-router-dom';
+import { clearWorkforceAuth, getWorkforceAuth } from '../../utils/workforceAuth';
 
 function VendorDashboard() {
   const navigate = useNavigate();
-  const authState = JSON.parse(localStorage.getItem('workforceAuth') || 'null');
+  const authState = getWorkforceAuth('vendor');
 
   if (!authState || authState.role !== 'vendor') {
     return <Navigate to="/work/login" replace />;
@@ -12,7 +13,7 @@ function VendorDashboard() {
   const { profile } = authState;
 
   const handleLogout = () => {
-    localStorage.removeItem('workforceAuth');
+    clearWorkforceAuth('vendor');
     navigate('/work/login');
   };
 
@@ -54,6 +55,9 @@ function VendorDashboard() {
           <div className="mt-8 flex flex-wrap gap-3">
             <Link to="/" className="px-4 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50">
               Home
+            </Link>
+            <Link to="/work/vendor-profile" className="px-4 py-2 rounded-lg border border-purple-200 text-purple-700 hover:bg-purple-50">
+              Edit Profile
             </Link>
             <button onClick={handleLogout} className="px-4 py-2 rounded-lg bg-primary-custom text-white hover:opacity-90">
               Logout

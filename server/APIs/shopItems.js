@@ -1,7 +1,9 @@
 const express = require('express');
 const shopItemsApp = express.Router();
-const shopItemsModel = require('../Models/shopItemsModel');
+const shopItemsModel = require('../models/shopItemsModel');
 const expressAsyncHandler = require('express-async-handler');
+
+const DEFAULT_ITEM_QUANTITY = 50;
 
 const SHOP_ITEM_EDITABLE_FIELDS = [
   'name',
@@ -28,7 +30,8 @@ shopItemsApp.post('/shopitem', expressAsyncHandler(async (req, res) => {
   }
 
   const parsedCost = Number(cost);
-  const parsedQuantity = Number(quantity);
+  const hasQuantityInput = quantity !== undefined && quantity !== null && `${quantity}`.trim() !== '';
+  const parsedQuantity = hasQuantityInput ? Number(quantity) : DEFAULT_ITEM_QUANTITY;
 
   if (Number.isNaN(parsedCost) || parsedCost < 0) {
     return res.status(400).send({ message: 'Cost must be zero or greater' });

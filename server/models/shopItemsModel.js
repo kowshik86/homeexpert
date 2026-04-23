@@ -21,6 +21,8 @@ const shopItemsSchema = new mongoose.Schema({
   quantity: {
     type: Number,
     required: true,
+    default: 50,
+    min: 0,
   },
   category: {
     type: String,
@@ -28,6 +30,6 @@ const shopItemsSchema = new mongoose.Schema({
   },
 });
 
-const shopItemsModel = mongoose.model('shopItem', shopItemsSchema,"shopItems");
+const shopItemsModel = mongoose.models.shopItem || mongoose.model('shopItem', shopItemsSchema, 'shopItems');
 
 module.exports = shopItemsModel;

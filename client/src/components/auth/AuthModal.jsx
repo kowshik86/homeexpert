@@ -23,19 +23,19 @@ const AuthModal = () => {
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 backdrop-blur-sm px-3 py-6"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/65 backdrop-blur-md px-3 py-6"
       onClick={handleBackdropClick}
     >
-      <div className="bg-white rounded-[28px] shadow-[0_30px_80px_rgba(15,23,42,0.28)] w-full max-w-[760px] overflow-hidden flex font-[Gilroy,arial,Helvetica_Neue,sans-serif] z-50 relative border border-white/60">
+      <div className="surface-card w-full max-w-[760px] overflow-hidden flex font-[Gilroy,arial,Helvetica_Neue,sans-serif] z-50 relative rounded-[28px]">
         {/* Left side - Image */}
         <div className="hidden md:block md:w-[46%] ">
-          <div className="h-full w-full bg-gradient-to-br from-[#6d28d9] via-[#8a4af3] to-[#c084fc] flex items-center justify-center p-4">
+          <div className="h-full w-full bg-[linear-gradient(145deg,#5b21b6,#8a4af3_48%,#c084fc)] flex items-center justify-center p-4">
             <GroceryBagImage />
           </div>
         </div>
 
         {/* Right side - White background with form */}
-        <div className="flex-1 p-5 md:p-6 relative bg-gradient-to-b from-white to-purple-50/30">
+        <div className="flex-1 p-5 md:p-6 relative bg-gradient-to-b from-white to-slate-50/70">
           <button
             onClick={closeAuthModal}
             className="absolute top-4 right-4 text-gray-500 hover:text-gray-700 rounded-full border border-gray-200 bg-white/90 p-2 shadow-sm"
@@ -49,12 +49,12 @@ const AuthModal = () => {
             <div className="inline-flex items-center rounded-full bg-primary-custom/10 px-3 py-1 text-xs font-semibold text-primary-custom">
               Secure one-time login
             </div>
-            <h2 className="mt-3 text-2xl font-black text-gray-900 leading-tight">
+            <h2 className="mt-3 text-2xl font-black text-slate-900 leading-tight">
               {otpSent ? 'Enter your verification code' : authMode === 'login' ? 'Sign in to your account' : 'Create your account'}
             </h2>
-            <p className="mt-2 text-sm text-gray-600 max-w-md">
+            <p className="mt-2 text-sm text-slate-600 max-w-md">
               {otpSent
-                ? 'We use OTP to keep login fast and low-friction on mobile.'
+                ? 'We use OTP to keep login fast, secure, and low-friction on mobile.'
                 : authMode === 'login'
                   ? 'Continue with your mobile number and finish login with a one-time password.'
                   : 'Create your profile once and keep orders, addresses, and account details in sync.'}
@@ -105,8 +105,8 @@ const AuthModal = () => {
           )}
 
           {!otpSent && (
-            <div className="mt-6 text-center border-t border-gray-100 pt-4">
-              <p className="text-sm text-gray-600">
+            <div className="mt-6 text-center border-t border-slate-100 pt-4">
+              <p className="text-sm text-slate-600">
                 {authMode === 'login' ? "Don't have an account? " : "Already have an account? "}
                 <button
                   onClick={switchAuthMode}

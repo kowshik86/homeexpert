@@ -2,7 +2,7 @@ const express = require('express');
 const favoriteApp = express.Router();
 const favoriteModel = require('../models/favoriteModel');
 const userModel = require('../models/userModel');
-const shopItemsModel = require('../Models/shopItemsModel');
+const shopItemsModel = require('../models/shopItemsModel');
 const shopGoodsModel = require('../models/shopGoodsModel');
 const expressAsyncHandler = require('express-async-handler');
 

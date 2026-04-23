@@ -3,6 +3,7 @@ import { useCart } from '../../context/CartContext';
 import { useAuth } from '../../context/AuthContext';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import SearchBar from './SearchBar';
+import { clearWorkforceAuth, getAllWorkforceAuth } from '../../utils/workforceAuth';
 
 function Header() {
   const { cartCount } = useCart();
@@ -21,15 +22,31 @@ function Header() {
   const showConsumerActions = !isAdminPath && !isWorkPath;
   const showSearch = showConsumerActions && !isHomePath;
 
+  const getRoleFromPath = (pathName) => {
+    if (pathName.startsWith('/work/shopkeeper')) return 'shopkeeper';
+    if (pathName.startsWith('/work/delivery')) return 'delivery';
+    if (pathName.startsWith('/work/worker')) return 'worker';
+    if (pathName.startsWith('/work/vendor')) return 'vendor';
+    return null;
+  };
+
+  const selectVisibleWorkforceAuth = () => {
+    const sessions = getAllWorkforceAuth();
+    const roleFromPath = getRoleFromPath(location.pathname);
+    if (roleFromPath && sessions[roleFromPath]) {
+      return sessions[roleFromPath];
+    }
+
+    return sessions.shopkeeper || sessions.delivery || sessions.worker || sessions.vendor || null;
+  };
+
   useEffect(() => {
-    const workforceState = localStorage.getItem('workforceAuth');
-    setWorkforceAuth(workforceState ? JSON.parse(workforceState) : null);
+    setWorkforceAuth(selectVisibleWorkforceAuth());
   }, [location.pathname, currentUser]);
 
   useEffect(() => {
     const onStorageChange = () => {
-      const workforceState = localStorage.getItem('workforceAuth');
-      setWorkforceAuth(workforceState ? JSON.parse(workforceState) : null);
+      setWorkforceAuth(selectVisibleWorkforceAuth());
     };
 
     window.addEventListener('storage', onStorageChange);
@@ -39,7 +56,7 @@ function Header() {
   const workforceRouteByRole = {
     shopkeeper: '/work/shopkeeper-profile',
     delivery: '/work/delivery-profile',
-    worker: '/work/worker-dashboard',
+    worker: '/work/worker-profile',
   };
 
   const workforceBranding = {
@@ -58,7 +75,7 @@ function Header() {
   };
 
   const activeAccount = useMemo(() => {
-    if (currentUser) {
+    if (currentUser && !isWorkPath && !isAdminPath) {
       return {
         label: currentUser.firstName || 'Account',
         accountPath: '/account',
@@ -101,7 +118,9 @@ function Header() {
       logout();
     }
 
-    localStorage.removeItem('workforceAuth');
+    if (workforceAuth?.role) {
+      clearWorkforceAuth(workforceAuth.role);
+    }
     setWorkforceAuth(null);
 
     if (isWorkPath || isAdminPath || hadWorkforceSession) {
@@ -136,24 +155,8 @@ function Header() {
     );
   };
 
-  const renderRoleCta = (account) => {
-    if (!account) {
-      return null;
-    }
-
-    if (account.isWorkforce) {
-      return (
-        <Link
-          to={account.accountPath}
-          className="inline-flex items-center rounded-full bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition-all duration-300 hover:bg-slate-800 hover:-translate-y-0.5"
-        >
-          Open {account.roleLabel}
-        </Link>
-      );
-    }
-
-    // Hide consumer section toggle on landing page when user is already logged in.
-    if (isHomePath) {
+  const renderConsumerCta = () => {
+    if (!currentUser || isHomePath || isWorkPath || isAdminPath) {
       return null;
     }
 
@@ -230,7 +233,7 @@ function Header() {
               {activeAccount ? (
                 <div className="flex items-center space-x-3">
                   {renderAccountChip(activeAccount)}
-                  {renderRoleCta(activeAccount)}
+                  {!activeAccount.isWorkforce ? renderConsumerCta() : null}
                   {activeAccount.isWorkforce ? (
                     <button
                       onClick={handleUnifiedLogout}
@@ -342,7 +345,9 @@ function Header() {
               {activeAccount ? (
                 <div className="flex flex-col space-y-3">
                   <div onClick={() => setMobileMenuOpen(false)}>{renderAccountChip(activeAccount)}</div>
-                  <div onClick={() => setMobileMenuOpen(false)}>{renderRoleCta(activeAccount)}</div>
+                  {!activeAccount.isWorkforce ? (
+                    <div onClick={() => setMobileMenuOpen(false)}>{renderConsumerCta()}</div>
+                  ) : null}
                   {activeAccount.isWorkforce ? (
                     <button
                       onClick={() => {

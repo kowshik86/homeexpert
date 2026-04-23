@@ -6,6 +6,10 @@ const validatePhoneNumber = (phone) => {
 };
 
 const shopItemSchema = new mongoose.Schema({
+  catalogItemId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'shopItem',
+  },
   category: { type: String, required: true },
   name: { type: [String], required: true },
   imageUrl: { type: String, required: true },

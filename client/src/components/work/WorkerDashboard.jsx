@@ -1,7 +1,11 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, Navigate, useNavigate } from 'react-router-dom';
 import { toast } from 'react-toastify';
-import { fetchWorkerBookings } from '../../services/api';
+import { MapContainer, Marker, Polyline, Popup, ScaleControl, TileLayer, useMap } from 'react-leaflet';
+import L from 'leaflet';
+import 'leaflet/dist/leaflet.css';
+import { fetchWorkerBookings, updateWorkerOrderLocation } from '../../services/api';
+import { clearWorkforceAuth, getWorkforceAuth, setWorkforceAuth } from '../../utils/workforceAuth';
 
 const FALLBACK_SERVICE_IMAGE = 'https://images.unsplash.com/photo-1581578731548-c64695cc6952?auto=format&fit=crop&w=900&q=80';
 
@@ -9,6 +13,7 @@ const WORKER_TABS = [
   { id: 'overview', label: 'Overview' },
   { id: 'leads', label: 'New Leads' },
   { id: 'schedule', label: 'Schedule' },
+  { id: 'map', label: 'Navigation' },
   { id: 'earnings', label: 'Earnings' },
   { id: 'profile', label: 'Profile Studio' },
 ];
@@ -32,12 +37,120 @@ const SERVICE_LIBRARY = [
   },
 ];
 
-const getAuthState = () => {
-  try {
-    return JSON.parse(localStorage.getItem('workforceAuth') || 'null');
-  } catch {
+const iconShadow = 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-shadow.png';
+
+const workerIcon = new L.Icon({
+  iconUrl: 'https://img.icons8.com/color/96/motorcycle.png',
+  shadowUrl: iconShadow,
+  iconSize: [36, 36],
+  iconAnchor: [18, 20],
+  popupAnchor: [0, -20],
+  shadowSize: [41, 41],
+});
+
+const destinationIcon = new L.Icon({
+  iconUrl: 'https://cdn-icons-png.flaticon.com/512/535/535188.png',
+  shadowUrl: iconShadow,
+  iconSize: [28, 28],
+  iconAnchor: [14, 28],
+  popupAnchor: [0, -24],
+  shadowSize: [41, 41],
+});
+
+const createAddressCoordinates = (address = {}) => {
+  const seed = `${address.pincode || ''}-${address.city || ''}-${address.addressLine1 || ''}`;
+  const hash = String(seed || '1')
+    .split('')
+    .reduce((acc, char) => acc + char.charCodeAt(0), 0) || 1;
+  const lat = 12.9 + (hash % 1700) / 1000;
+  const lng = 77.2 + ((hash * 7) % 1900) / 1000;
+  return { lat, lng };
+};
+
+const geocodeAddress = async (address) => {
+  const query = [address?.addressLine1, address?.city, address?.state, address?.pincode, 'India']
+    .filter(Boolean)
+    .join(', ');
+
+  if (!query) {
     return null;
   }
+
+  const response = await fetch(`https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(query)}`, {
+    headers: {
+      'Accept-Language': 'en',
+    },
+  });
+
+  if (!response.ok) {
+    return null;
+  }
+
+  const payload = await response.json();
+  if (!Array.isArray(payload) || payload.length === 0) {
+    return null;
+  }
+
+  return {
+    lat: Number(payload[0].lat),
+    lng: Number(payload[0].lon),
+  };
+};
+
+const toRadians = (value) => (value * Math.PI) / 180;
+const isValidCoordinate = (lat, lng) => Number.isFinite(lat) && Number.isFinite(lng);
+
+const getHaversineDistanceMeters = (from, to) => {
+  if (!from || !to) {
+    return 0;
+  }
+
+  const earthRadius = 6371000;
+  const dLat = toRadians(to.lat - from.lat);
+  const dLng = toRadians(to.lng - from.lng);
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(toRadians(from.lat)) * Math.cos(toRadians(to.lat)) *
+    Math.sin(dLng / 2) * Math.sin(dLng / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return earthRadius * c;
+};
+
+const fetchOsrmRoute = async (from, to) => {
+  const url = `https://router.project-osrm.org/route/v1/driving/${from.lng},${from.lat};${to.lng},${to.lat}?overview=full&geometries=geojson`;
+  const response = await fetch(url);
+  if (!response.ok) {
+    return null;
+  }
+
+  const payload = await response.json();
+  const route = payload?.routes?.[0]?.geometry?.coordinates;
+  if (!Array.isArray(route) || route.length === 0) {
+    return null;
+  }
+
+  return route.map((coord) => ({ lat: Number(coord[1]), lng: Number(coord[0]) }));
+};
+
+function FollowWorker({ enabled, position }) {
+  const map = useMap();
+
+  useEffect(() => {
+    if (!enabled) {
+      return;
+    }
+
+    map.setView([position.lat, position.lng], Math.max(map.getZoom(), 15), {
+      animate: true,
+      duration: 0.6,
+    });
+  }, [enabled, map, position]);
+
+  return null;
+}
+
+const getAuthState = () => {
+  return getWorkforceAuth('worker');
 };
 
 const getServiceImage = (booking = {}) => {
@@ -95,27 +208,48 @@ const isOverlappingWindow = (firstWindow, secondWindow) => {
 function WorkerDashboard() {
   const navigate = useNavigate();
   const authState = getAuthState();
-
-  if (!authState || authState.role !== 'worker') {
-    return <Navigate to="/work/login" replace />;
-  }
+  const isAuthorized = authState?.role === 'worker';
+  const mapRef = useRef(null);
+  const gpsWatchRef = useRef(null);
+  const locationSyncRef = useRef({
+    orderId: null,
+    lastSyncAt: 0,
+    lastLat: null,
+    lastLng: null,
+  });
 
   const [activeTab, setActiveTab] = useState('overview');
   const [bookingRows, setBookingRows] = useState([]);
   const [loadingBookings, setLoadingBookings] = useState(true);
   const [isSavingProfile, setIsSavingProfile] = useState(false);
-  const [workerProfile, setWorkerProfile] = useState(authState.profile || {});
-  const [availability, setAvailability] = useState(Boolean(authState.profile?.isAvailable ?? true));
+  const [workerProfile, setWorkerProfile] = useState(authState?.profile || {});
+  const [availability, setAvailability] = useState(Boolean(authState?.profile?.isAvailable ?? true));
   const [profileForm, setProfileForm] = useState({
-    hourlyRate: authState.profile?.hourlyRate || 0,
-    experienceYears: authState.profile?.experienceYears || 0,
-    serviceRadiusKm: authState.profile?.serviceRadiusKm || 8,
+    hourlyRate: authState?.profile?.hourlyRate || 0,
+    experienceYears: authState?.profile?.experienceYears || 0,
+    serviceRadiusKm: authState?.profile?.serviceRadiusKm || 8,
     bio:
-      authState.profile?.bio ||
+      authState?.profile?.bio ||
       'I deliver high-quality home services with transparent pricing, quick response, and attention to detail.',
-    workTypes: Array.isArray(authState.profile?.workTypes)
+    workTypes: Array.isArray(authState?.profile?.workTypes)
       ? authState.profile.workTypes.join(', ')
       : 'Home Cleaning, AC Service, Plumbing',
+  });
+
+  const [currentPosition, setCurrentPosition] = useState({ lat: 12.9716, lng: 77.5946 });
+  const [navigationActive, setNavigationActive] = useState(false);
+  const [locationError, setLocationError] = useState(null);
+  const [destinationCoords, setDestinationCoords] = useState(null);
+  const [routePath, setRoutePath] = useState([]);
+  const [routeLoading, setRouteLoading] = useState(false);
+  const [mapViewMode, setMapViewMode] = useState('follow');
+  const [liveDistanceMeters, setLiveDistanceMeters] = useState(0);
+  const routeSyncRef = useRef({
+    lastFromLat: null,
+    lastFromLng: null,
+    lastToLat: null,
+    lastToLng: null,
+    lastFetchedAt: 0,
   });
 
   const workerId = workerProfile?._id;
@@ -152,10 +286,14 @@ function WorkerDashboard() {
   };
 
   useEffect(() => {
+    if (!isAuthorized) {
+      return;
+    }
+
     refreshBookings(true);
     const poll = setInterval(() => refreshBookings(false), 20000);
     return () => clearInterval(poll);
-  }, [workerId]);
+  }, [workerId, isAuthorized]);
 
   const leads = useMemo(() => bookingRows.filter((booking) => booking.orderStatus === 'PLACED'), [bookingRows]);
   const scheduleBookings = useMemo(
@@ -211,14 +349,239 @@ function WorkerDashboard() {
       .sort((a, b) => b.count - a.count);
   }, [completedBookings]);
 
+  const activeBooking = useMemo(() => scheduleBookings[0] || null, [scheduleBookings]);
+  const activeBookingDestination = useMemo(() => {
+    if (!activeBooking) {
+      return null;
+    }
+
+    return activeBooking.deliveryAddress || activeBooking.address || activeBooking.serviceAddress || null;
+  }, [activeBooking]);
+
+  useEffect(() => {
+    if (!activeBookingDestination) {
+      setDestinationCoords(null);
+      setRoutePath([]);
+      setLiveDistanceMeters(0);
+      setRouteLoading(false);
+      return;
+    }
+
+    let isMounted = true;
+
+    const resolveDestination = async () => {
+      setRouteLoading(true);
+      const stored = activeBooking?.liveTracking?.destinationLocation;
+      if (isValidCoordinate(Number(stored?.lat), Number(stored?.lng))) {
+        const storedDestination = {
+          lat: Number(stored.lat),
+          lng: Number(stored.lng),
+        };
+        setDestinationCoords(storedDestination);
+        setLiveDistanceMeters(getHaversineDistanceMeters(currentPosition, storedDestination));
+        setRouteLoading(false);
+        return;
+      }
+
+      const geocoded = await geocodeAddress(activeBookingDestination).catch(() => null);
+      const fallback = createAddressCoordinates(activeBookingDestination);
+
+      if (!isMounted) {
+        return;
+      }
+
+      const nextDestination = geocoded || fallback;
+      setDestinationCoords(nextDestination);
+      setLiveDistanceMeters(getHaversineDistanceMeters(currentPosition, nextDestination));
+      setRouteLoading(false);
+    };
+
+    resolveDestination();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [activeBooking, activeBookingDestination]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadRoute = async () => {
+      if (!destinationCoords) {
+        setRoutePath([]);
+        setLiveDistanceMeters(0);
+        return;
+      }
+
+      const now = Date.now();
+      const previous = routeSyncRef.current;
+      const hasSameRouteTarget =
+        previous.lastToLat === destinationCoords.lat &&
+        previous.lastToLng === destinationCoords.lng;
+      const movedDistanceMeters =
+        Number.isFinite(previous.lastFromLat) && Number.isFinite(previous.lastFromLng)
+          ? getHaversineDistanceMeters(
+              { lat: previous.lastFromLat, lng: previous.lastFromLng },
+              currentPosition,
+            )
+          : Number.MAX_SAFE_INTEGER;
+      const shouldRefetchRoute =
+        !hasSameRouteTarget ||
+        now - previous.lastFetchedAt > 15000 ||
+        movedDistanceMeters >= 30;
+
+      if (!shouldRefetchRoute && routePath.length > 1) {
+        setLiveDistanceMeters(getHaversineDistanceMeters(currentPosition, destinationCoords));
+        return;
+      }
+
+      const routedPath = await fetchOsrmRoute(currentPosition, destinationCoords).catch(() => null);
+      if (cancelled) {
+        return;
+      }
+
+      routeSyncRef.current = {
+        lastFromLat: currentPosition.lat,
+        lastFromLng: currentPosition.lng,
+        lastToLat: destinationCoords.lat,
+        lastToLng: destinationCoords.lng,
+        lastFetchedAt: now,
+      };
+
+      if (routedPath && routedPath.length > 1) {
+        setRoutePath(routedPath);
+      } else {
+        setRoutePath([currentPosition, destinationCoords]);
+      }
+
+      setLiveDistanceMeters(getHaversineDistanceMeters(currentPosition, destinationCoords));
+    };
+
+    loadRoute();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [currentPosition, destinationCoords]);
+
+  useEffect(() => {
+    if (!navigationActive || !workerId || !activeBooking?._id || !destinationCoords) {
+      return;
+    }
+
+    const now = Date.now();
+    const previous = locationSyncRef.current;
+    const previousPoint =
+      Number.isFinite(previous.lastLat) && Number.isFinite(previous.lastLng)
+        ? { lat: previous.lastLat, lng: previous.lastLng }
+        : null;
+    const movedDistanceMeters = previousPoint ? getHaversineDistanceMeters(previousPoint, currentPosition) : Number.MAX_SAFE_INTEGER;
+    const shouldSync =
+      previous.orderId !== activeBooking._id ||
+      now - previous.lastSyncAt >= 8000 ||
+      movedDistanceMeters >= 25;
+
+    if (!shouldSync) {
+      return;
+    }
+
+    locationSyncRef.current = {
+      orderId: activeBooking._id,
+      lastSyncAt: now,
+      lastLat: currentPosition.lat,
+      lastLng: currentPosition.lng,
+    };
+
+    updateWorkerOrderLocation(activeBooking._id, {
+      workerId,
+      lat: currentPosition.lat,
+      lng: currentPosition.lng,
+      destinationLat: destinationCoords.lat,
+      destinationLng: destinationCoords.lng,
+    }).catch((error) => {
+      console.error('Failed to sync worker live location:', error);
+    });
+  }, [navigationActive, workerId, activeBooking, currentPosition, destinationCoords]);
+
+  useEffect(() => {
+    return () => {
+      if (gpsWatchRef.current !== null && navigator.geolocation?.clearWatch) {
+        navigator.geolocation.clearWatch(gpsWatchRef.current);
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!mapRef.current || routePath.length < 2) {
+      return;
+    }
+
+    if (mapViewMode === 'overview') {
+      mapRef.current.fitBounds(routePath, { padding: [40, 40] });
+    }
+  }, [mapViewMode, routePath]);
+
   const handleLogout = () => {
-    localStorage.removeItem('workforceAuth');
+    if (gpsWatchRef.current !== null && navigator.geolocation?.clearWatch) {
+      navigator.geolocation.clearWatch(gpsWatchRef.current);
+    }
+    clearWorkforceAuth('worker');
     navigate('/work/login');
+  };
+
+  const handleStartGPS = () => {
+    if (!navigator.geolocation) {
+      setLocationError('Geolocation not supported on this device');
+      return;
+    }
+
+    setLocationError(null);
+    gpsWatchRef.current = navigator.geolocation.watchPosition(
+      (position) => {
+        setCurrentPosition({
+          lat: position.coords.latitude,
+          lng: position.coords.longitude,
+        });
+      },
+      (error) => {
+        setLocationError(`GPS Error: ${error.message}`);
+      },
+      { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 }
+    );
+    setNavigationActive(true);
+  };
+
+  const handleStopGPS = () => {
+    if (gpsWatchRef.current !== null && navigator.geolocation?.clearWatch) {
+      navigator.geolocation.clearWatch(gpsWatchRef.current);
+      gpsWatchRef.current = null;
+    }
+    setNavigationActive(false);
+  };
+
+  const handleOpenGoogleMaps = () => {
+    if (!activeBookingDestination || !destinationCoords) {
+      return;
+    }
+
+    const fullAddress = [
+      activeBookingDestination.addressLine1,
+      activeBookingDestination.addressLine2,
+      activeBookingDestination.city,
+      activeBookingDestination.state,
+      activeBookingDestination.pincode,
+    ]
+      .filter(Boolean)
+      .join(', ');
+
+    const destination = `${destinationCoords.lat},${destinationCoords.lng}`;
+    const query = fullAddress ? encodeURIComponent(fullAddress) : destination;
+    window.open(`https://www.google.com/maps/dir/?api=1&origin=${currentPosition.lat},${currentPosition.lng}&destination=${destination}&travelmode=driving`, '_blank', 'noopener,noreferrer');
   };
 
   const updateWorkforceLocalProfile = (nextProfile) => {
     const nextAuth = { ...authState, profile: nextProfile };
-    localStorage.setItem('workforceAuth', JSON.stringify(nextAuth));
+    setWorkforceAuth('worker', nextAuth);
     setWorkerProfile(nextProfile);
   };
 
@@ -342,6 +705,10 @@ function WorkerDashboard() {
       setIsSavingProfile(false);
     }
   };
+
+  if (!isAuthorized) {
+    return <Navigate to="/work/login" replace />;
+  }
 
   const renderOverview = () => (
     <div className="space-y-6">
@@ -584,11 +951,194 @@ function WorkerDashboard() {
     </div>
   );
 
+  const renderNavigation = () => {
+    const hasActiveBooking = Boolean(activeBooking);
+    const canShowTracking = hasActiveBooking && ['CONFIRMED', 'PREPARING', 'OUT_FOR_DELIVERY'].includes(activeBooking?.orderStatus);
+
+    return (
+      <div className="space-y-4">
+        <div className="rounded-2xl border border-slate-200 bg-white p-3">
+          <div className="mb-2 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <p className="text-sm font-semibold text-slate-900">Expert Location Map</p>
+              {!hasActiveBooking ? (
+                <span className="px-2 py-1 rounded-full text-xs font-semibold bg-slate-100 text-slate-700">No Active Booking</span>
+              ) : activeBooking?.orderStatus === 'DELIVERED' ? (
+                <span className="px-2 py-1 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-800">Completed</span>
+              ) : activeBooking?.orderStatus === 'CANCELLED' ? (
+                <span className="px-2 py-1 rounded-full text-xs font-semibold bg-rose-100 text-rose-800">Cancelled</span>
+              ) : null}
+            </div>
+            <div className="flex items-center gap-2">
+              {canShowTracking ? (
+                <>
+                  {!navigationActive ? (
+                    <button
+                      type="button"
+                      onClick={handleStartGPS}
+                      className="text-xs rounded-md bg-emerald-600 px-2 py-1 font-semibold text-white hover:bg-emerald-700"
+                    >
+                      Start GPS
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={handleStopGPS}
+                      className="text-xs rounded-md bg-rose-600 px-2 py-1 font-semibold text-white hover:bg-rose-700"
+                    >
+                      Stop GPS
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setMapViewMode('follow')}
+                    className={`text-xs rounded-md px-2 py-1 font-semibold ${mapViewMode === 'follow' ? 'bg-sky-600 text-white' : 'border border-slate-300 bg-white text-slate-700 hover:bg-slate-50'}`}
+                  >
+                    Follow Bike
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMapViewMode('overview');
+                      if (routePath.length >= 2 && mapRef.current) {
+                        mapRef.current.fitBounds(routePath, { padding: [40, 40] });
+                      }
+                    }}
+                    className={`text-xs rounded-md px-2 py-1 font-semibold ${mapViewMode === 'overview' ? 'bg-sky-600 text-white' : 'border border-slate-300 bg-white text-slate-700 hover:bg-slate-50'}`}
+                  >
+                    Route Overview
+                  </button>
+                </>
+              ) : null}
+              <button
+                type="button"
+                onClick={handleOpenGoogleMaps}
+                disabled={!hasActiveBooking || !activeBookingDestination}
+                className={`text-xs rounded-md px-2 py-1 font-semibold ${
+                  !hasActiveBooking || !activeBookingDestination
+                    ? 'border border-slate-200 bg-slate-50 text-slate-400 cursor-not-allowed'
+                    : 'border border-slate-300 bg-white text-slate-700 hover:bg-slate-50'
+                }`}
+              >
+                Open in Google Maps
+              </button>
+            </div>
+          </div>
+
+          {locationError && navigationActive ? (
+            <div className="mb-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+              {locationError}
+            </div>
+          ) : null}
+
+          <div className="h-[280px] overflow-hidden rounded-xl border border-slate-200 bg-slate-50 relative">
+            {!hasActiveBooking ? (
+              <div className="absolute inset-0 flex items-center justify-center bg-slate-50 z-10">
+                <div className="text-center">
+                  <p className="text-sm font-semibold text-slate-600">No active service booking</p>
+                  <p className="text-xs text-slate-500 mt-1">Bookings will appear in your schedule</p>
+                </div>
+              </div>
+            ) : null}
+            <MapContainer
+              key={activeBooking?._id || 'worker-map-empty'}
+              ref={mapRef}
+              center={destinationCoords ? [destinationCoords.lat, destinationCoords.lng] : [currentPosition.lat, currentPosition.lng]}
+              zoom={13}
+              scrollWheelZoom
+              className="h-full w-full"
+              zoomControl={hasActiveBooking}
+            >
+              <TileLayer
+                attribution='&copy; OpenStreetMap contributors'
+                url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+              />
+
+              <ScaleControl position="bottomleft" />
+
+              {navigationActive && canShowTracking ? (
+                <FollowWorker enabled={navigationActive && mapViewMode === 'follow'} position={currentPosition} />
+              ) : null}
+
+              {canShowTracking && destinationCoords ? (
+                <Marker position={[destinationCoords.lat, destinationCoords.lng]} icon={destinationIcon}>
+                  <Popup>Service Address</Popup>
+                </Marker>
+              ) : null}
+
+              {navigationActive && canShowTracking ? (
+                <>
+                  <Marker position={[currentPosition.lat, currentPosition.lng]} icon={workerIcon}>
+                    <Popup>Your Location (live)</Popup>
+                  </Marker>
+                  {routePath.length > 0 ? (
+                    <Polyline positions={routePath} pathOptions={{ color: '#0ea5e9', weight: 5, opacity: 0.8 }} />
+                  ) : null}
+                </>
+              ) : null}
+            </MapContainer>
+          </div>
+
+          {canShowTracking ? (
+            <div className="mt-3 grid grid-cols-2 gap-2 text-[11px] text-slate-600">
+              <div className="rounded-lg border border-slate-200 bg-slate-50 px-2 py-1.5 text-center">Your Location</div>
+              <div className="rounded-lg border border-slate-200 bg-slate-50 px-2 py-1.5 text-center">Service Address</div>
+            </div>
+          ) : null}
+        </div>
+
+        {activeBooking ? (
+          <div className="rounded-xl border border-slate-200 p-4">
+            <p className="text-sm font-bold text-slate-800 mb-3">Active Service Booking</p>
+            <div className="rounded-lg border border-slate-200 p-3 bg-slate-50">
+              <div className="flex items-start justify-between gap-2">
+                <div className="flex-1">
+                  <p className="text-sm font-semibold text-slate-900">{activeBooking.serviceBooking?.serviceName || 'Service'}</p>
+                  <p className="text-xs text-slate-600 mt-1">
+                    📍 {activeBooking.deliveryAddress?.city || activeBooking.address?.city || 'Location pending'}
+                  </p>
+                  <p className="text-xs text-slate-500 mt-1">
+                    {new Date(activeBooking.serviceBooking?.scheduledFor || activeBooking.createdAt).toLocaleString(undefined, {
+                      month: 'short',
+                      day: 'numeric',
+                      hour: '2-digit',
+                      minute: '2-digit',
+                    })}
+                  </p>
+                </div>
+                <span className={`px-2 py-1 rounded-full text-xs font-semibold ${
+                  activeBooking.orderStatus === 'DELIVERED' ? 'bg-emerald-100 text-emerald-800' :
+                  activeBooking.orderStatus === 'CANCELLED' ? 'bg-rose-100 text-rose-800' :
+                  'bg-cyan-100 text-cyan-800'
+                }`}>
+                  {activeBooking.orderStatus}
+                </span>
+              </div>
+            </div>
+          </div>
+        ) : null}
+
+        <div className="rounded-lg border border-blue-200 bg-blue-50 px-4 py-3">
+          <p className="text-xs font-semibold text-blue-700 uppercase tracking-wide">💡 Tip</p>
+          <p className="text-sm text-blue-900 mt-1">Enable GPS tracking to help customers track your arrival in real-time.</p>
+        </div>
+      </div>
+    );
+  };
+
   const renderProfileStudio = () => (
     <form onSubmit={handleProfileSave} className="rounded-2xl border border-slate-200 bg-white p-5 space-y-4">
-      <div>
-        <h3 className="text-lg font-bold text-slate-900">Profile Studio</h3>
-        <p className="text-sm text-slate-500 mt-1">Optimize your profile for better booking conversion.</p>
+      <div className="flex items-start justify-between">
+        <div>
+          <h3 className="text-lg font-bold text-slate-900">Profile Studio</h3>
+          <p className="text-sm text-slate-500 mt-1">Optimize your profile for better booking conversion.</p>
+        </div>
+        <Link
+          to="/work/worker-profile"
+          className="px-4 py-2 rounded-lg border border-emerald-200 text-emerald-700 hover:bg-emerald-50 text-sm font-semibold whitespace-nowrap"
+        >
+          Full Editor
+        </Link>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -739,6 +1289,7 @@ function WorkerDashboard() {
                 {activeTab === 'overview' ? renderOverview() : null}
                 {activeTab === 'leads' ? renderLeads() : null}
                 {activeTab === 'schedule' ? renderSchedule() : null}
+                {activeTab === 'map' ? renderNavigation() : null}
                 {activeTab === 'earnings' ? renderEarnings() : null}
                 {activeTab === 'profile' ? renderProfileStudio() : null}
               </>

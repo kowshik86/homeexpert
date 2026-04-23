@@ -1,16 +1,16 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Link, Navigate, useNavigate } from 'react-router-dom';
 import { toast } from 'react-toastify';
+import { getWorkforceAuth, setWorkforceAuth } from '../../utils/workforceAuth';
+import { readImageFileAsDataUrl, validateImageFile } from '../../utils/imageUpload';
 
 const getAuthState = () => {
-  try {
-    return JSON.parse(localStorage.getItem('workforceAuth') || 'null');
-  } catch {
-    return null;
-  }
+  return getWorkforceAuth('delivery');
 };
 
 const joinList = (items) => (Array.isArray(items) ? items.join(', ') : '');
+
+const PROFILE_PLACEHOLDER = 'https://via.placeholder.com/120?text=Profile';
 
 function DeliveryProfile() {
   const navigate = useNavigate();
@@ -34,6 +34,7 @@ function DeliveryProfile() {
   });
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState('');
+  const [profileImageData, setProfileImageData] = useState(profile?.profileImg || '');
 
   const handleBackToDashboard = () => {
     window.location.assign('/work/delivery-dashboard');
@@ -55,6 +56,7 @@ function DeliveryProfile() {
       isAvailable: profile?.isAvailable ?? true,
       serviceAreas: joinList(profile?.serviceAreas),
     });
+    setProfileImageData(profile?.profileImg || '');
   }, [profile]);
 
   const stats = useMemo(() => ([
@@ -76,6 +78,24 @@ function DeliveryProfile() {
     }));
   };
 
+  const handleProfileImageUpload = async (event) => {
+    const selectedFile = event.target.files?.[0];
+    const validationMessage = validateImageFile(selectedFile);
+
+    if (validationMessage) {
+      setError(validationMessage);
+      return;
+    }
+
+    try {
+      const encodedImage = await readImageFileAsDataUrl(selectedFile);
+      setProfileImageData(encodedImage);
+      setError('');
+    } catch (uploadError) {
+      setError(uploadError.message || 'Failed to process selected image.');
+    }
+  };
+
   const handleSubmit = async (event) => {
     event.preventDefault();
     setError('');
@@ -95,6 +115,7 @@ function DeliveryProfile() {
         },
         body: JSON.stringify({
           ...formData,
+          profileImg: profileImageData || undefined,
           serviceAreas: formData.serviceAreas
             .split(',')
             .map((item) => item.trim())
@@ -108,7 +129,7 @@ function DeliveryProfile() {
       }
 
       const data = await response.json();
-      localStorage.setItem('workforceAuth', JSON.stringify({ ...authState, profile: data.payload }));
+      setWorkforceAuth('delivery', { ...authState, profile: data.payload });
       toast.success('Delivery profile updated');
       navigate('/work/delivery-dashboard');
     } catch (profileError) {
@@ -137,6 +158,18 @@ function DeliveryProfile() {
 
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
           <div className="rounded-[24px] border border-white bg-white shadow-md p-5 space-y-4 lg:col-span-1">
+            <div className="rounded-2xl border border-sky-100 bg-sky-50 p-4 flex items-center gap-3">
+              <img
+                src={profileImageData || profile?.profileImg || PROFILE_PLACEHOLDER}
+                alt="Delivery profile"
+                className="h-12 w-12 rounded-full border border-sky-200 object-cover"
+              />
+              <div>
+                <p className="text-xs uppercase tracking-[0.2em] text-sky-700 font-bold">Profile Photo</p>
+                <p className="text-xs text-sky-900 mt-1">Shown in role dashboards</p>
+              </div>
+            </div>
+
             <div className="rounded-2xl bg-sky-50 border border-sky-100 p-4">
               <p className="text-xs uppercase tracking-[0.2em] text-sky-700 font-bold">Quick Stats</p>
               <div className="mt-4 space-y-3">
@@ -156,6 +189,35 @@ function DeliveryProfile() {
 
           <form onSubmit={handleSubmit} className="rounded-[24px] border border-gray-100 bg-white shadow-md p-6 lg:col-span-3 space-y-6">
             {error ? <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</div> : null}
+
+            <section className="rounded-2xl border border-gray-200 bg-gray-50 px-4 py-4">
+              <label htmlFor="deliveryProfileImage" className="block text-sm font-medium text-gray-700 mb-2">Profile Photo</label>
+              <div className="flex flex-wrap items-center gap-4">
+                <img
+                  src={profileImageData || PROFILE_PLACEHOLDER}
+                  alt="Profile preview"
+                  className="h-16 w-16 rounded-full border border-gray-200 object-cover bg-white"
+                />
+                <div className="space-y-2">
+                  <input
+                    id="deliveryProfileImage"
+                    type="file"
+                    accept="image/*"
+                    onChange={handleProfileImageUpload}
+                    className="block w-full text-sm text-gray-700"
+                  />
+                  {profileImageData ? (
+                    <button
+                      type="button"
+                      onClick={() => setProfileImageData('')}
+                      className="text-xs font-semibold text-red-600 hover:text-red-700"
+                    >
+                      Remove photo
+                    </button>
+                  ) : null}
+                </div>
+              </div>
+            </section>
 
             <section className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>

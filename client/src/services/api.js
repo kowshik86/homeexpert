@@ -7,9 +7,22 @@ const API_BASE_URL = 'http://localhost:3000'; // Make sure this matches your ser
  */
 const handleApiResponse = async (response, errorMessage) => {
   if (!response.ok) {
-    const errorText = await response.text().catch(() => 'Unknown error');
-    console.error(`API Error (${response.status}): ${errorText}`);
-    throw new Error(`${errorMessage} (Status: ${response.status})`);
+    let backendMessage = '';
+
+    try {
+      const contentType = response.headers.get('content-type') || '';
+      if (contentType.includes('application/json')) {
+        const errorData = await response.json();
+        backendMessage = errorData?.message || errorData?.error || '';
+      } else {
+        backendMessage = await response.text();
+      }
+    } catch (parseError) {
+      backendMessage = '';
+    }
+
+    console.error(`API Error (${response.status}): ${backendMessage || 'Unknown error'}`);
+    throw new Error(backendMessage || `${errorMessage} (Status: ${response.status})`);
   }
 
   const data = await response.json();
@@ -247,6 +260,42 @@ export const updateDeliveryOrderStatus = async (orderId, orderStatus, deliveryPe
     return await handleApiResponse(response, 'Failed to update delivery order status');
   } catch (error) {
     console.error('Error updating delivery order status:', error);
+    throw error;
+  }
+};
+
+// Update live delivery location from rider GPS
+export const updateDeliveryOrderLocation = async (orderId, { deliveryPersonId, lat, lng, destinationLat, destinationLng }) => {
+  try {
+    const response = await fetch(`${API_BASE_URL}/order-api/order/${orderId}/location`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ deliveryPersonId, lat, lng, destinationLat, destinationLng }),
+    });
+
+    return await handleApiResponse(response, 'Failed to update delivery location');
+  } catch (error) {
+    console.error('Error updating delivery location:', error);
+    throw error;
+  }
+};
+
+// Update live service location from worker GPS
+export const updateWorkerOrderLocation = async (orderId, { workerId, lat, lng, destinationLat, destinationLng }) => {
+  try {
+    const response = await fetch(`${API_BASE_URL}/order-api/order/${orderId}/location`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ workerId, lat, lng, destinationLat, destinationLng }),
+    });
+
+    return await handleApiResponse(response, 'Failed to update worker location');
+  } catch (error) {
+    console.error('Error updating worker location:', error);
     throw error;
   }
 };

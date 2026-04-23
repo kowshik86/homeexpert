@@ -7,13 +7,17 @@ import Products from './components/Products'
 import HomeServicesHub from './components/HomeServicesHub'
 import ServiceBookingPage from './components/ServiceBookingPage'
 import UserDashboard from './components/user/UserDashboard'
+import OrderDetailsPage from './components/user/OrderDetailsPage'
 import AuthModal from './components/auth/AuthModal'
 import WorkLogin from './components/work/WorkLogin'
 import ShopkeeperDashboard from './components/work/ShopkeeperDashboard'
 import ShopkeeperProfile from './components/work/ShopkeeperProfile'
 import DeliveryDashboard from './components/work/DeliveryDashboard'
 import DeliveryProfile from './components/work/DeliveryProfile'
+import VendorDashboard from './components/work/VendorDashboard'
+import VendorProfile from './components/work/VendorProfile'
 import WorkerDashboard from './components/work/WorkerDashboard'
+import WorkerProfile from './components/work/WorkerProfile'
 import WorkforceAdminDashboard from './components/admin/WorkforceAdminDashboard'
 import './App.css';
 import { useAuth } from './context/AuthContext'
@@ -67,6 +71,10 @@ function App() {
           element: <ProtectedRoute><UserDashboard /></ProtectedRoute>
         },
         {
+          path: "account/order/:orderId",
+          element: <ProtectedRoute><OrderDetailsPage /></ProtectedRoute>
+        },
+        {
           path: "work/login",
           element: <WorkLogin />
         },
@@ -87,8 +95,20 @@ function App() {
           element: <DeliveryProfile />
         },
         {
+          path: "work/vendor-dashboard",
+          element: <VendorDashboard />
+        },
+        {
+          path: "work/vendor-profile",
+          element: <VendorProfile />
+        },
+        {
           path: "work/worker-dashboard",
           element: <WorkerDashboard />
+        },
+        {
+          path: "work/worker-profile",
+          element: <WorkerProfile />
         }
       ]
     },

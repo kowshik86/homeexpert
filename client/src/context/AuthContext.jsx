@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
 
 // Create the auth context
 const AuthContext = createContext();
@@ -42,7 +42,7 @@ export const AuthProvider = ({ children }) => {
   }, [currentUser]);
 
   // Register a new user
-  const register = async (userData) => {
+  const register = useCallback(async (userData) => {
     try {
       const response = await fetch('http://localhost:3000/user-api/user', {
         method: 'POST',
@@ -63,10 +63,10 @@ export const AuthProvider = ({ children }) => {
       console.error('Registration error:', error);
       throw error;
     }
-  };
+  }, []);
 
   // Check if user exists by mobile number
-  const checkUserExists = async (phone) => {
+  const checkUserExists = useCallback(async (phone) => {
     try {
       const response = await fetch(`http://localhost:3000/user-api/check-user/${phone}`, {
         method: 'GET',
@@ -86,10 +86,10 @@ export const AuthProvider = ({ children }) => {
       console.error('Check user error:', error);
       throw error;
     }
-  };
+  }, []);
 
   // Send OTP to phone number
-  const sendOTP = async (phone) => {
+  const sendOTP = useCallback(async (phone) => {
     try {
       // Use the regular send-otp endpoint
       const response = await fetch('http://localhost:3000/user-api/send-otp', {
@@ -113,10 +113,10 @@ export const AuthProvider = ({ children }) => {
       console.error('Send OTP error:', error);
       throw error;
     }
-  };
+  }, []);
 
   // Resend OTP to phone number
-  const resendOTP = async (phone) => {
+  const resendOTP = useCallback(async (phone) => {
     try {
       // Use the resend-otp endpoint
       const response = await fetch('http://localhost:3000/user-api/resend-otp', {
@@ -138,10 +138,10 @@ export const AuthProvider = ({ children }) => {
       console.error('Resend OTP error:', error);
       throw error;
     }
-  };
+  }, [phoneNumber]);
 
   // Verify OTP
-  const verifyOTP = async (otp) => {
+  const verifyOTP = useCallback(async (otp) => {
     try {
       const response = await fetch('http://localhost:3000/user-api/verify-otp', {
         method: 'POST',
@@ -156,9 +156,7 @@ export const AuthProvider = ({ children }) => {
         throw new Error(errorData.message || 'OTP verification failed');
       }
 
-      const data = await response.json();
-
-  localStorage.removeItem('workforceAuth');
+        const data = await response.json();
 
       // Cart items are already stored in localStorage by the CartContext
       // No need to do anything special here to preserve them
@@ -172,40 +170,40 @@ export const AuthProvider = ({ children }) => {
       console.error('Verify OTP error:', error);
       throw error;
     }
-  };
+  }, [phoneNumber]);
 
   // Logout user
-  const logout = () => {
+  const logout = useCallback(() => {
     setCurrentUser(null);
     localStorage.removeItem('currentUser');
-  };
+  }, []);
 
   // Open auth modal
-  const openAuthModal = (mode = 'login') => {
+  const openAuthModal = useCallback((mode = 'login') => {
     setAuthMode(mode);
     setAuthModalOpen(true);
     setOtpSent(false);
     setPhoneNumber('');
     document.body.classList.add('modal-open');
-  };
+  }, []);
 
   // Close auth modal
-  const closeAuthModal = () => {
+  const closeAuthModal = useCallback(() => {
     setAuthModalOpen(false);
     setOtpSent(false);
     setPhoneNumber('');
     document.body.classList.remove('modal-open');
-  };
+  }, []);
 
   // Switch between login and register modes
-  const switchAuthMode = () => {
+  const switchAuthMode = useCallback(() => {
     setAuthMode(authMode === 'login' ? 'register' : 'login');
     setOtpSent(false);
     setPhoneNumber('');
-  };
+  }, [authMode]);
 
   // Context value
-  const value = {
+  const value = useMemo(() => ({
     currentUser,
     loading,
     authModalOpen,
@@ -221,7 +219,23 @@ export const AuthProvider = ({ children }) => {
     openAuthModal,
     closeAuthModal,
     switchAuthMode,
-  };
+  }), [
+    currentUser,
+    loading,
+    authModalOpen,
+    authMode,
+    otpSent,
+    phoneNumber,
+    register,
+    checkUserExists,
+    sendOTP,
+    resendOTP,
+    verifyOTP,
+    logout,
+    openAuthModal,
+    closeAuthModal,
+    switchAuthMode,
+  ]);
 
   return (
     <AuthContext.Provider value={value}>

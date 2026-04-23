@@ -7,19 +7,29 @@ import 'leaflet/dist/leaflet.css';
 import {
   assignOrderToDeliveryPerson,
   fetchDeliveryOrders,
+  updateDeliveryOrderLocation,
   updateDeliveryOrderStatus,
 } from '../../services/api';
+import { clearWorkforceAuth, getWorkforceAuth } from '../../utils/workforceAuth';
 
 const getAuthState = () => {
-  try {
-    return JSON.parse(localStorage.getItem('workforceAuth') || 'null');
-  } catch {
-    return null;
-  }
+  return getWorkforceAuth('delivery');
 };
 
 const DELIVERY_FLOW = ['PLACED', 'CONFIRMED', 'PREPARING', 'OUT_FOR_DELIVERY', 'DELIVERED'];
 const ACTIVE_DELIVERY_STATUSES = ['PLACED', 'CONFIRMED', 'PREPARING', 'OUT_FOR_DELIVERY'];
+
+const getEntityId = (entity) => {
+  if (!entity) {
+    return '';
+  }
+
+  if (typeof entity === 'object' && entity._id) {
+    return String(entity._id);
+  }
+
+  return String(entity);
+};
 
 const getStatusBadgeClass = (status) => {
   if (status === 'OUT_FOR_DELIVERY') return 'bg-sky-100 text-sky-800 border-sky-200';
@@ -230,6 +240,7 @@ function FollowCourier({ enabled, position }) {
 function DeliveryDashboard() {
   const navigate = useNavigate();
   const authState = getAuthState();
+  const isAuthorized = authState?.role === 'delivery';
   const mapRef = useRef(null);
 
   const [orders, setOrders] = useState([]);
@@ -255,12 +266,9 @@ function DeliveryDashboard() {
 
   const previousOrderIdsRef = useRef(new Set());
   const watchIdRef = useRef(null);
+  const lastLocationSyncAtByOrderRef = useRef({});
 
-  if (!authState || authState.role !== 'delivery') {
-    return <Navigate to="/work/login" replace />;
-  }
-
-  const { profile } = authState;
+  const profile = authState?.profile || {};
   const deliveryPersonId = profile?._id;
 
   const requestNotificationPermission = async () => {
@@ -324,6 +332,10 @@ function DeliveryDashboard() {
   };
 
   useEffect(() => {
+    if (!isAuthorized) {
+      return;
+    }
+
     requestNotificationPermission();
     loadOrders();
 
@@ -334,9 +346,13 @@ function DeliveryDashboard() {
     return () => {
       window.clearInterval(pollingInterval);
     };
-  }, []);
+  }, [isAuthorized]);
 
   useEffect(() => {
+    if (!isAuthorized) {
+      return;
+    }
+
     if (!navigator.geolocation) {
       setLocationError('GPS is not supported in this browser.');
       return;
@@ -368,14 +384,14 @@ function DeliveryDashboard() {
         navigator.geolocation.clearWatch(watchIdRef.current);
       }
     };
-  }, []);
+  }, [isAuthorized]);
 
   const myOrders = useMemo(
     () =>
       orders.filter(
         (order) =>
           !order.deliveryPersonId ||
-          String(order.deliveryPersonId) === String(deliveryPersonId),
+          getEntityId(order.deliveryPersonId) === String(deliveryPersonId),
       ),
     [orders, deliveryPersonId],
   );
@@ -386,7 +402,7 @@ function DeliveryDashboard() {
   );
 
   const selectedOrderAssignedToMe =
-    !!selectedOrder && String(selectedOrder.deliveryPersonId) === String(deliveryPersonId);
+    !!selectedOrder && getEntityId(selectedOrder.deliveryPersonId) === String(deliveryPersonId);
 
   const navigationActive =
     !!selectedOrder && selectedOrderAssignedToMe && selectedOrder._id === activeNavigationOrderId;
@@ -521,22 +537,57 @@ function DeliveryDashboard() {
   }, [currentPosition, navigationActive, routeSteps, activeStepIndex]);
 
   const acceptedCount = myOrders.filter(
-    (order) => String(order.deliveryPersonId) === String(deliveryPersonId),
+    (order) => getEntityId(order.deliveryPersonId) === String(deliveryPersonId),
   ).length;
 
   const outForDeliveryCount = myOrders.filter(
-    (order) => order.orderStatus === 'OUT_FOR_DELIVERY' && String(order.deliveryPersonId) === String(deliveryPersonId),
+    (order) => order.orderStatus === 'OUT_FOR_DELIVERY' && getEntityId(order.deliveryPersonId) === String(deliveryPersonId),
   ).length;
 
   const activeAssignedDelivery = myOrders.find(
     (order) =>
-      String(order.deliveryPersonId) === String(deliveryPersonId) &&
+      getEntityId(order.deliveryPersonId) === String(deliveryPersonId) &&
       ACTIVE_DELIVERY_STATUSES.includes(order.orderStatus),
   );
   const hasActiveAssignedDelivery = Boolean(activeAssignedDelivery);
 
+  useEffect(() => {
+    const syncTargetOrders = myOrders.filter(
+      (order) =>
+        getEntityId(order.deliveryPersonId) === String(deliveryPersonId) &&
+        order.orderStatus === 'OUT_FOR_DELIVERY',
+    );
+
+    if (syncTargetOrders.length === 0) {
+      return;
+    }
+
+    const now = Date.now();
+
+    syncTargetOrders.forEach((order) => {
+      const orderId = String(order._id);
+      const lastSyncedAt = lastLocationSyncAtByOrderRef.current[orderId] || 0;
+
+      if (now - lastSyncedAt < 8000) {
+        return;
+      }
+
+      lastLocationSyncAtByOrderRef.current[orderId] = now;
+
+      updateDeliveryOrderLocation(orderId, {
+        deliveryPersonId,
+        lat: currentPosition.lat,
+        lng: currentPosition.lng,
+        destinationLat: destinationCoords?.lat,
+        destinationLng: destinationCoords?.lng,
+      }).catch(() => {
+        // Keep dashboard smooth even if one location ping fails.
+      });
+    });
+  }, [myOrders, currentPosition, deliveryPersonId, destinationCoords]);
+
   const handleLogout = () => {
-    localStorage.removeItem('workforceAuth');
+    clearWorkforceAuth('delivery');
     navigate('/work/login');
   };
 
@@ -623,6 +674,10 @@ function DeliveryDashboard() {
     ? getHaversineDistanceMeters(currentPosition, activeStep.location)
     : 0;
 
+  if (!isAuthorized) {
+    return <Navigate to="/work/login" replace />;
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-b from-amber-50 via-white to-cyan-50 pt-24 pb-10 px-4">
       <div className="max-w-7xl mx-auto space-y-6">
@@ -684,7 +739,7 @@ function DeliveryDashboard() {
               {myOrders.map((order) => {
                 const address = order.deliveryAddress || {};
                 const itemCount = Array.isArray(order.orderItems) ? order.orderItems.length : 0;
-                const isAssignedToMe = String(order.deliveryPersonId) === String(deliveryPersonId);
+                const isAssignedToMe = getEntityId(order.deliveryPersonId) === String(deliveryPersonId);
                 const isActive = selectedOrder?._id === order._id;
                 const canAccept = !hasActiveAssignedDelivery || isAssignedToMe;
 
