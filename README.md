@@ -1,3 +1,5 @@
+## HomeXpert
+
 HomeXpert is a full-stack role-based platform that combines two customer needs in one app:
 
 1. Grocery shopping with cart, checkout, addresses, favorites, and order tracking.
